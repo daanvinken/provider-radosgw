@@ -37,6 +37,7 @@ import (
 	"net/http"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"strings"
 )
 
@@ -48,6 +49,9 @@ const (
 	errNewClient      = "cannot create new radosgw client"
 	errGetCephUser    = "Failed to retrieve cephuser"
 	errCreateCephUser = "Failed to create cephuser"
+	errDeleteCephUser = "Failed to delete cephuser"
+
+	inUseFinalizer = "cephuser-in-use.ceph.radosgw.crossplane.io"
 )
 
 // A NoOpService does nothing.
@@ -148,7 +152,7 @@ func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 
 	// TODO verify the configured backend? Or should we do a seperate healthcheck ?
 
-	// Create a new context and cancel it when we have either found the bucket
+	// Create a new context and cancel it when we have either found the user
 	// somewhere or cannot find it anywhere.
 	ctxC, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -210,6 +214,14 @@ func (c *external) Create(ctx context.Context, mg resource.Managed) (managed.Ext
 		c.log.Info("Failed to update cephUser", "backend name", "cephUser_uid", cr.Spec.ForProvider.UID)
 	}
 
+	// TODO should we add the finalizer here already? Maybe only on adding a first bucket
+	if controllerutil.AddFinalizer(cr, inUseFinalizer) {
+		err := c.kubeClient.Update(ctx, cr)
+		if err != nil {
+			return managed.ExternalCreation{}, err
+		}
+	}
+
 	//return managed.ExternalCreation{
 	//	// Optionally return any details that may be required to connect to the
 	//	// external resource. These will be stored as the connection secret.
@@ -239,7 +251,23 @@ func (c *external) Delete(ctx context.Context, mg resource.Managed) error {
 		return errors.New(errNotCephUser)
 	}
 
-	fmt.Printf("Deleting: %+v", cr)
+	// TODO write helper function to check for existing buckets using aws sdk
+	// Also need to verify how radosgw hanles deletion while buckets exist
+	if controllerutil.RemoveFinalizer(cr, inUseFinalizer) {
+		err := c.kubeClient.Update(ctx, cr)
+		if err != nil {
+			c.log.Info("Failed to remove in-use finalizer on cephuser", "cephUser_uid", cr.Spec.ForProvider.UID, "error", err.Error())
+			return errors.Wrap(err, errDeleteCephUser)
+		}
+	}
+
+	user := radosgw.GenerateCephUserInput(cr)
+	err := c.rgw_client.RemoveUser(ctx, *user)
+	if err != nil {
+		c.log.Info("Failed to remove cephUser on radosgw", "cephUser_uid", cr.Spec.ForProvider.UID, "error", err.Error())
+		return errors.Wrap(err, errDeleteCephUser)
+
+	}
 
 	return nil
 }
