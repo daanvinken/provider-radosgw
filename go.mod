@@ -1,4 +1,4 @@
-module provider-radosgw
+module github.com/daanvinken/provider-radosgw
 
 go 1.20
 

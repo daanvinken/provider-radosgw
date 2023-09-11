@@ -36,10 +36,10 @@ import (
 	"github.com/crossplane/crossplane-runtime/pkg/ratelimiter"
 	"github.com/crossplane/crossplane-runtime/pkg/resource"
 
-	"provider-radosgw/apis"
-	"provider-radosgw/apis/v1alpha1"
-	radosgw "provider-radosgw/internal/controller"
-	"provider-radosgw/internal/features"
+	"github.com/daanvinken/provider-radosgw/apis"
+	"github.com/daanvinken/provider-radosgw/apis/v1alpha1"
+	radosgw "github.com/daanvinken/provider-radosgw/internal/controller"
+	"github.com/daanvinken/provider-radosgw/internal/features"
 )
 
 func main() {
