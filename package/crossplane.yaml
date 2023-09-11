@@ -4,7 +4,7 @@ metadata:
   name: provider-radosgw
   annotations:
     meta.crossplane.io/maintainer: Crossplane Maintainers <info@crossplane.io>
-    meta.crossplane.io/source: github.com/crossplane/provider-radosgw
+    meta.crossplane.io/source: github.com/daanvinken/provider-radosgw
     meta.crossplane.io/license: Apache-2.0
     meta.crossplane.io/description: |
       A radosgw that can be used to create Crossplane providers.

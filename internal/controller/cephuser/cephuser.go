@@ -32,13 +32,13 @@ import (
 	"github.com/crossplane/crossplane-runtime/pkg/reconciler/managed"
 	"github.com/crossplane/crossplane-runtime/pkg/resource"
 
-	"github.com/crossplane/provider-radosgw/apis/ceph/v1alpha1"
-	apisv1alpha1 "github.com/crossplane/provider-radosgw/apis/v1alpha1"
-	"github.com/crossplane/provider-radosgw/internal/controller/features"
+	"github.com/daanvinken/provider-radosgw/apis/ceph/v1alpha1"
+	apisv1alpha1 "github.com/daanvinken/provider-radosgw/apis/v1alpha1"
+	"github.com/daanvinken/provider-radosgw/internal/controller/features"
 )
 
 const (
-	errNotCephUser    = "managed resource is not a CephUser custom resource"
+	errNotCephUser  = "managed resource is not a CephUser custom resource"
 	errTrackPCUsage = "cannot track ProviderConfig usage"
 	errGetPC        = "cannot get ProviderConfig"
 	errGetCreds     = "cannot get credentials"
