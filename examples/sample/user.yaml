@@ -1,11 +1,11 @@
 apiVersion: ceph.radosgw.crossplane.io/v1alpha1
 kind: CephUser
 metadata:
-  name: mytestuser10
+  name: mytestuser120
 spec:
   forProvider:
-    displayed_name: "My test user 10"
-    uid: testuser-crossplane-10
+    displayed_name: "My test user 120"
+    uid: testuser-crossplane-120
     user_quota_max_objects: 1000
     user_quota_max_size_kb: 1000000000
     user_quota_max_buckets: 1000

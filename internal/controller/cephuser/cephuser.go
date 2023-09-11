@@ -34,18 +34,20 @@ import (
 	"net/http"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"strings"
 
 	"github.com/daanvinken/provider-radosgw/apis/ceph/v1alpha1"
 	apisv1alpha1 "github.com/daanvinken/provider-radosgw/apis/v1alpha1"
 )
 
 const (
-	errNotCephUser  = "managed resource is not a CephUser custom resource"
-	errTrackPCUsage = "cannot track ProviderConfig usage"
-	errGetPC        = "cannot get ProviderConfig"
-	errGetCreds     = "cannot get credentials"
-	errNewClient    = "cannot create new radosgw client"
-	errGetCephUser  = "Failed to retrieve cephuser"
+	errNotCephUser    = "managed resource is not a CephUser custom resource"
+	errTrackPCUsage   = "cannot track ProviderConfig usage"
+	errGetPC          = "cannot get ProviderConfig"
+	errGetCreds       = "cannot get credentials"
+	errNewClient      = "cannot create new radosgw client"
+	errGetCephUser    = "Failed to retrieve cephuser"
+	errCreateCephUser = "Failed to create cephuser"
 )
 
 // A NoOpService does nothing.
@@ -147,7 +149,7 @@ func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 	ctxC, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	fmt.Println(cr.Name, ctxC)
+	//fmt.Println(cr.Name, ctxC)
 
 	cephUserExists, err := radosgw.CephUserExists(ctxC, c.rgw_client, *cr.Spec.ForProvider.UID)
 	if err != nil {
@@ -188,8 +190,15 @@ func (c *external) Create(ctx context.Context, mg resource.Managed) (managed.Ext
 		return managed.ExternalCreation{}, errors.New(errNotCephUser)
 	}
 
-	fmt.Printf("Creating: %+v", cr)
+	//fmt.Printf("Creating: %+v", cr)
 
+	user := radosgw.GenerateCephUserInput(cr)
+	_, err := c.rgw_client.CreateUser(ctx, *user)
+	if resource.Ignore(isAlreadyExists, err) != nil {
+		c.log.Info("Failed to create cephUser on radosgw", "cephUser_uid", cr.Spec.ForProvider.UID, "error", err.Error())
+		return managed.ExternalCreation{}, errors.Wrap(err, errCreateCephUser)
+
+	}
 	return managed.ExternalCreation{
 		// Optionally return any details that may be required to connect to the
 		// external resource. These will be stored as the connection secret.
@@ -221,4 +230,16 @@ func (c *external) Delete(ctx context.Context, mg resource.Managed) error {
 	fmt.Printf("Deleting: %+v", cr)
 
 	return nil
+}
+
+// isAlreadyExists helper function to test for an already existing user
+func isAlreadyExists(err error) bool {
+	// TODO can we check for direct client error types
+	if err == nil {
+		return false
+	}
+	if strings.HasPrefix(err.Error(), "KeyExists") {
+		return true
+	}
+	return false
 }
