@@ -95,8 +95,12 @@ spec:
                 required:
                 - source
                 type: object
+              hostname:
+                description: The url for your radosgw endpoint.
+                type: string
             required:
             - credentials
+            - hostname
             type: object
           status:
             description: A ProviderConfigStatus reflects the observed state of a ProviderConfig.

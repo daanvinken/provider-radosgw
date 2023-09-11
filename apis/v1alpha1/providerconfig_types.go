@@ -29,6 +29,9 @@ import (
 type ProviderConfigSpec struct {
 	// Credentials required to authenticate to this provider.
 	Credentials ProviderCredentials `json:"credentials"`
+
+	// The url for your radosgw endpoint.
+	HostName string `json:"hostname"`
 }
 
 // ProviderCredentials required to authenticate.

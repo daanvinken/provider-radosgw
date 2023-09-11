@@ -67,10 +67,28 @@ spec:
               forProvider:
                 description: CephUserParameters are the configurable fields of a CephUser.
                 properties:
-                  configurableField:
+                  displayed_name:
+                    description: The displayed name
                     type: string
+                  uid:
+                    description: The uid of the user (human readable string)
+                    type: string
+                  user_quota_max_buckets:
+                    description: The max number of objects allowed for this user
+                    type: integer
+                  user_quota_max_objects:
+                    description: The number of objects for this user
+                    format: int64
+                    type: integer
+                  user_quota_max_size_kb:
+                    description: The maximum storage size (total) in MB
+                    type: integer
                 required:
-                - configurableField
+                - displayed_name
+                - uid
+                - user_quota_max_buckets
+                - user_quota_max_objects
+                - user_quota_max_size_kb
                 type: object
               managementPolicies:
                 default:
