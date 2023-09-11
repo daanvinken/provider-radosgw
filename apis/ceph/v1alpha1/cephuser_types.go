@@ -27,7 +27,20 @@ import (
 
 // CephUserParameters are the configurable fields of a CephUser.
 type CephUserParameters struct {
-	ConfigurableField string `json:"configurableField"`
+	// The uid of the user (human readable string)
+	UID *string `json:"uid"`
+
+	// The displayed name
+	DisplayedName *string `json:"displayed_name"`
+
+	// The max number of objects allowed for this user
+	UserQuotaMaxBuckets *int `json:"user_quota_max_buckets"`
+
+	// The maximum storage size (total) in MB
+	UserQuotaMaxSizeKB *int `json:"user_quota_max_size_kb"`
+
+	// The number of objects for this user
+	UserQuotaMaxObjects *int64 `json:"user_quota_max_objects"`
 }
 
 // CephUserObservation are the observable fields of a CephUser.

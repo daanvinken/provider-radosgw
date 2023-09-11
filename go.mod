@@ -1,4 +1,4 @@
-module github.com/crossplane/provider-radosgw
+module provider-radosgw
 
 go 1.20
 

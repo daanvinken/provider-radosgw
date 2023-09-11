@@ -18,10 +18,10 @@ package controller
 
 import (
 	"github.com/crossplane/crossplane-runtime/pkg/controller"
-	"github.com/crossplane/provider-radosgw/internal/controller/cephuser"
+	"provider-radosgw/internal/controller/cephuser"
 	ctrl "sigs.k8s.io/controller-runtime"
 
-	"github.com/crossplane/provider-radosgw/internal/controller/config"
+	"provider-radosgw/internal/controller/config"
 )
 
 // Setup creates all radosgw controllers with the supplied logger and adds them to

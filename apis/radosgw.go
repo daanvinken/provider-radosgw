@@ -20,8 +20,8 @@ package apis
 import (
 	"k8s.io/apimachinery/pkg/runtime"
 
-	cephv1alpha1 "github.com/crossplane/provider-radosgw/apis/ceph/v1alpha1"
-	radosgwv1alpha1 "github.com/crossplane/provider-radosgw/apis/v1alpha1"
+	cephv1alpha1 "provider-radosgw/apis/ceph/v1alpha1"
+	radosgwv1alpha1 "provider-radosgw/apis/v1alpha1"
 )
 
 func init() {

@@ -19,6 +19,7 @@ package cephuser
 import (
 	"context"
 	"fmt"
+	"provider-radosgw/internal/features"
 
 	"github.com/pkg/errors"
 	"k8s.io/apimachinery/pkg/types"
@@ -32,9 +33,8 @@ import (
 	"github.com/crossplane/crossplane-runtime/pkg/reconciler/managed"
 	"github.com/crossplane/crossplane-runtime/pkg/resource"
 
-	"github.com/crossplane/provider-radosgw/apis/ceph/v1alpha1"
-	apisv1alpha1 "github.com/crossplane/provider-radosgw/apis/v1alpha1"
-	"github.com/crossplane/provider-radosgw/internal/controller/features"
+	"provider-radosgw/apis/ceph/v1alpha1"
+	apisv1alpha1 "provider-radosgw/apis/v1alpha1"
 )
 
 const (
