@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	radosgw_admin "github.com/ceph/go-ceph/rgw/admin"
+	xpv1 "github.com/crossplane/crossplane-runtime/apis/common/v1"
 	"github.com/crossplane/crossplane-runtime/pkg/connection"
 	"github.com/crossplane/crossplane-runtime/pkg/controller"
 	"github.com/crossplane/crossplane-runtime/pkg/event"
@@ -27,6 +28,8 @@ import (
 	"github.com/crossplane/crossplane-runtime/pkg/ratelimiter"
 	"github.com/crossplane/crossplane-runtime/pkg/reconciler/managed"
 	"github.com/crossplane/crossplane-runtime/pkg/resource"
+	"github.com/daanvinken/provider-radosgw/apis/ceph/v1alpha1"
+	apisv1alpha1 "github.com/daanvinken/provider-radosgw/apis/v1alpha1"
 	"github.com/daanvinken/provider-radosgw/internal/features"
 	"github.com/daanvinken/provider-radosgw/internal/radosgw"
 	"github.com/pkg/errors"
@@ -35,9 +38,6 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"strings"
-
-	"github.com/daanvinken/provider-radosgw/apis/ceph/v1alpha1"
-	apisv1alpha1 "github.com/daanvinken/provider-radosgw/apis/v1alpha1"
 )
 
 const (
@@ -126,12 +126,16 @@ func (c *connector) Connect(ctx context.Context, mg resource.Managed) (managed.E
 	if err != nil {
 		return nil, errors.Wrap(err, errNewClient)
 	}
-	return &external{rgw_client: rgwClient}, err
+	return &external{
+		rgw_client: rgwClient,
+		kubeClient: c.kube,
+	}, err
 }
 
 // An ExternalClient observes, then either creates, updates, or deletes an
 // external resource to ensure it reflects the managed resource's desired state.
 type external struct {
+	kubeClient client.Client
 	rgw_client *radosgw_admin.API
 	log        logging.Logger
 }
@@ -199,11 +203,19 @@ func (c *external) Create(ctx context.Context, mg resource.Managed) (managed.Ext
 		return managed.ExternalCreation{}, errors.Wrap(err, errCreateCephUser)
 
 	}
-	return managed.ExternalCreation{
-		// Optionally return any details that may be required to connect to the
-		// external resource. These will be stored as the connection secret.
-		ConnectionDetails: managed.ConnectionDetails{},
-	}, nil
+
+	cr.Status.SetConditions(xpv1.Available())
+
+	if err := c.kubeClient.Status().Update(ctx, cr); err != nil {
+		c.log.Info("Failed to update cephUser", "backend name", "cephUser_uid", cr.Spec.ForProvider.UID)
+	}
+
+	//return managed.ExternalCreation{
+	//	// Optionally return any details that may be required to connect to the
+	//	// external resource. These will be stored as the connection secret.
+	//	ConnectionDetails: managed.ConnectionDetails{},
+	//}, nil
+	return managed.ExternalCreation{}, nil
 }
 
 func (c *external) Update(ctx context.Context, mg resource.Managed) (managed.ExternalUpdate, error) {
