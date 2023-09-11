@@ -1,4 +1,4 @@
-module github.com/daanvinken/provider-radosgw
+module github.com/crossplane/provider-template
 
 go 1.20
 

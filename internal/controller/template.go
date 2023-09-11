@@ -18,18 +18,18 @@ package controller
 
 import (
 	"github.com/crossplane/crossplane-runtime/pkg/controller"
-	"github.com/daanvinken/provider-radosgw/internal/controller/cephuser"
 	ctrl "sigs.k8s.io/controller-runtime"
 
-	"github.com/daanvinken/provider-radosgw/internal/controller/config"
+	"github.com/crossplane/provider-template/internal/controller/config"
+	"github.com/crossplane/provider-template/internal/controller/mytype"
 )
 
-// Setup creates all radosgw controllers with the supplied logger and adds them to
+// Setup creates all Template controllers with the supplied logger and adds them to
 // the supplied manager.
 func Setup(mgr ctrl.Manager, o controller.Options) error {
 	for _, setup := range []func(ctrl.Manager, controller.Options) error{
 		config.Setup,
-		cephuser.Setup,
+		mytype.Setup,
 	} {
 		if err := setup(mgr, o); err != nil {
 			return err

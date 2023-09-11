@@ -4,18 +4,18 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.12.1
-  name: cephusers.ceph.radosgw.crossplane.io
+  name: mytypes.sample.template.crossplane.io
 spec:
-  group: ceph.radosgw.crossplane.io
+  group: sample.template.crossplane.io
   names:
     categories:
     - crossplane
     - managed
-    - radosgw
-    kind: CephUser
-    listKind: CephUserList
-    plural: cephusers
-    singular: cephuser
+    - template
+    kind: MyType
+    listKind: MyTypeList
+    plural: mytypes
+    singular: mytype
   scope: Cluster
   versions:
   - additionalPrinterColumns:
@@ -34,7 +34,7 @@ spec:
     name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: A CephUser is an example API type.
+        description: A MyType is an example API type.
         properties:
           apiVersion:
             description: 'APIVersion defines the versioned schema of this representation
@@ -49,7 +49,7 @@ spec:
           metadata:
             type: object
           spec:
-            description: A CephUserSpec defines the desired state of a CephUser.
+            description: A MyTypeSpec defines the desired state of a MyType.
             properties:
               deletionPolicy:
                 default: Delete
@@ -65,31 +65,12 @@ spec:
                 - Delete
                 type: string
               forProvider:
-                description: CephUserParameters are the configurable fields of a CephUser.
+                description: MyTypeParameters are the configurable fields of a MyType.
                 properties:
-                  displayed_name:
-                    description: The displayed name
+                  configurableField:
                     type: string
-                  uid:
-                    description: The uid of the user (human readable string with no
-                      spaces)
-                    type: string
-                  user_quota_max_buckets:
-                    description: The max number of objects allowed for this user
-                    type: integer
-                  user_quota_max_objects:
-                    description: The number of objects for this user
-                    format: int64
-                    type: integer
-                  user_quota_max_size_kb:
-                    description: The maximum storage size (total) in MB
-                    type: integer
                 required:
-                - displayed_name
-                - uid
-                - user_quota_max_buckets
-                - user_quota_max_objects
-                - user_quota_max_size_kb
+                - configurableField
                 type: object
               managementPolicies:
                 default:
@@ -289,13 +270,17 @@ spec:
             - forProvider
             type: object
           status:
-            description: A CephUserStatus represents the observed state of a CephUser.
+            description: A MyTypeStatus represents the observed state of a MyType.
             properties:
               atProvider:
-                description: CephUserObservation are the observable fields of a CephUser.
+                description: MyTypeObservation are the observable fields of a MyType.
                 properties:
+                  configurableField:
+                    type: string
                   observableField:
                     type: string
+                required:
+                - configurableField
                 type: object
               conditions:
                 description: Conditions of the resource.
