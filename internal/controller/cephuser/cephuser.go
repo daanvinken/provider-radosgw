@@ -84,6 +84,7 @@ func Setup(mgr ctrl.Manager, o controller.Options) error {
 
 	return ctrl.NewControllerManagedBy(mgr).
 		Named(name).
+		Owns(&corev1.Secret{}).
 		WithOptions(o.ForControllerRuntime()).
 		WithEventFilter(resource.DesiredStateChanged()).
 		For(&v1alpha1.CephUser{}).
@@ -121,7 +122,7 @@ func (c *connector) Connect(ctx context.Context, mg resource.Managed) (managed.E
 	}
 
 	cd := pc.Spec.Credentials
-	b_AccessKey, b_SecretKey, err := radosgw.CephCredentialExtractor(ctx, cd, c.kube, cd.CommonCredentialSelectors)
+	b_AccessKey, b_SecretKey, err := radosgw.CephCredentialExtractor(ctx, cd, c.kube)
 	if err != nil {
 		return nil, errors.Wrap(err, errGetCreds)
 	}
@@ -156,8 +157,6 @@ func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 	// Create a new context and cancel it when we have either found the user or cannot find it.
 	ctxC, cancel := context.WithCancel(ctx)
 	defer cancel()
-
-	//fmt.Println(cr.Name, ctxC)
 
 	cephUserExists, err := radosgw.CephUserExists(ctxC, c.rgw_client, *cr.Spec.ForProvider.UID)
 	if err != nil {
@@ -227,11 +226,9 @@ func (c *external) Create(ctx context.Context, mg resource.Managed) (managed.Ext
 		Name: secretObject.Name,
 	}
 
-	// TODO secret should be a child object
+	controllerutil.SetControllerReference(cr, secretObject, r.scheme)
+
 	// Set the owner reference to make the Secret a child of the CephUser CR
-	//if err := controllerutil.SetControllerReference(cr, secretObject, c.Scheme); err != nil {
-	//	return ctrl.Result{}, err
-	//}
 
 	err = c.kubeClient.Update(ctx, cr)
 	if err != nil {
@@ -281,8 +278,10 @@ func (c *external) Delete(ctx context.Context, mg resource.Managed) error {
 		return errors.New(errNotCephUser)
 	}
 
-	// TODO write helper function to check for existing buckets using aws sdk
-	// Also need to verify how radosgw hanles deletion while buckets exist
+	// TODO write helper function to check for existing buckets using AWS sdk
+	// However maybe we can do this by just properly setting buckets as child objects
+
+	// Also need to verify how radosgw hanles deletion while buckets exist under a user
 	if controllerutil.RemoveFinalizer(cr, inUseFinalizer) {
 		err := c.kubeClient.Update(ctx, cr)
 		if err != nil {
