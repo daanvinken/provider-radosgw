@@ -33,6 +33,7 @@ import (
 	"github.com/daanvinken/provider-radosgw/internal/features"
 	"github.com/daanvinken/provider-radosgw/internal/radosgw"
 	"github.com/pkg/errors"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"net/http"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -152,8 +153,7 @@ func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 
 	// TODO verify the configured backend? Or should we do a seperate healthcheck ?
 
-	// Create a new context and cancel it when we have either found the user
-	// somewhere or cannot find it anywhere.
+	// Create a new context and cancel it when we have either found the user or cannot find it.
 	ctxC, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -208,13 +208,43 @@ func (c *external) Create(ctx context.Context, mg resource.Managed) (managed.Ext
 
 	}
 
+	// TODO fetch the current crossplane namespace
+	secretObject := radosgw.CreateKubernetesSecretCephUser(
+		user.Keys[0].AccessKey,
+		user.Keys[0].SecretKey,
+		"crossplane",
+		*cr.Spec.ForProvider.UID,
+	)
+
+	err = c.kubeClient.Create(ctx, &secretObject)
+	if err != nil {
+		c.log.Info("Failed to store cephUser credentials to K8s api", "cephUser_uid", cr.Spec.ForProvider.UID, "error", err.Error())
+		return managed.ExternalCreation{}, err
+	}
+
+	// TODO secret should be a child object
+	cr.Spec.CredentialsSecretRef = corev1.LocalObjectReference{
+		Name: secretObject.Name,
+	}
+
+	// TODO secret should be a child object
+	// Set the owner reference to make the Secret a child of the CephUser CR
+	//if err := controllerutil.SetControllerReference(cr, secretObject, c.Scheme); err != nil {
+	//	return ctrl.Result{}, err
+	//}
+
+	err = c.kubeClient.Update(ctx, cr)
+	if err != nil {
+		return managed.ExternalCreation{}, err
+	}
+
 	cr.Status.SetConditions(xpv1.Available())
 
 	if err := c.kubeClient.Status().Update(ctx, cr); err != nil {
 		c.log.Info("Failed to update cephUser", "backend name", "cephUser_uid", cr.Spec.ForProvider.UID)
 	}
 
-	// TODO should we add the finalizer here already? Maybe only on adding a first bucket
+	// TODO should we add the finalizer here already? Maybe only on adding at first bucket
 	if controllerutil.AddFinalizer(cr, inUseFinalizer) {
 		err := c.kubeClient.Update(ctx, cr)
 		if err != nil {
@@ -236,7 +266,7 @@ func (c *external) Update(ctx context.Context, mg resource.Managed) (managed.Ext
 		return managed.ExternalUpdate{}, errors.New(errNotCephUser)
 	}
 
-	fmt.Printf("Updating: %+v", cr)
+	fmt.Println("Updating but not implemented.")
 
 	return managed.ExternalUpdate{
 		// Optionally return any details that may be required to connect to the

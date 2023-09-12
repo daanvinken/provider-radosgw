@@ -17,6 +17,7 @@ limitations under the License.
 package v1alpha1
 
 import (
+	corev1 "k8s.io/api/core/v1"
 	"reflect"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -50,8 +51,9 @@ type CephUserObservation struct {
 
 // A CephUserSpec defines the desired state of a CephUser.
 type CephUserSpec struct {
-	xpv1.ResourceSpec `json:",inline"`
-	ForProvider       CephUserParameters `json:"forProvider"`
+	xpv1.ResourceSpec    `json:",inline"`
+	ForProvider          CephUserParameters          `json:"forProvider"`
+	CredentialsSecretRef corev1.LocalObjectReference `json:"credentialsSecretRef,omitempty"`
 }
 
 // A CephUserStatus represents the observed state of a CephUser.

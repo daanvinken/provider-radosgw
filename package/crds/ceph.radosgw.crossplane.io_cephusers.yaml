@@ -48,6 +48,16 @@ spec:
           spec:
             description: A CephUserSpec defines the desired state of a CephUser.
             properties:
+              credentialsSecretRef:
+                description: LocalObjectReference contains enough information to let
+                  you locate the referenced object inside the same namespace.
+                properties:
+                  name:
+                    description: 'Name of the referent. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                      TODO: Add other useful fields. apiVersion, kind, uid?'
+                    type: string
+                type: object
+                x-kubernetes-map-type: atomic
               deletionPolicy:
                 default: Delete
                 description: 'DeletionPolicy specifies what will happen to the underlying
