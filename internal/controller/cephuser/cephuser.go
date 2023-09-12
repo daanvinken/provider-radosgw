@@ -261,7 +261,7 @@ func (c *external) Create(ctx context.Context, mg resource.Managed) (managed.Ext
 }
 
 func (c *external) Update(ctx context.Context, mg resource.Managed) (managed.ExternalUpdate, error) {
-	cr, ok := mg.(*v1alpha1.CephUser)
+	_, ok := mg.(*v1alpha1.CephUser)
 	if !ok {
 		return managed.ExternalUpdate{}, errors.New(errNotCephUser)
 	}

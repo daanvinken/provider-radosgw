@@ -23,7 +23,7 @@ func GenerateCephUserInput(cephUser *v1alpha1.CephUser) *radosgw_admin.User {
 		//MaxBuckets:  cephUser.Spec.ForProvider.UserQuotaMaxBuckets,
 		//UserQuota:   userQuotaSpec,
 		DisplayName: *cephUser.Spec.ForProvider.DisplayedName,
-		Keys:        []radosgw_admin.UserKeySpec{{AccessKey: generateRandomSecret(8), SecretKey: generateRandomSecret(12)}},
+		Keys:        []radosgw_admin.UserKeySpec{{AccessKey: generateRandomSecret(15), SecretKey: generateRandomSecret(26)}},
 		// TODO fill all parameters and generate secrets
 	}
 
