@@ -226,7 +226,7 @@ func (c *external) Create(ctx context.Context, mg resource.Managed) (managed.Ext
 		Name: secretObject.Name,
 	}
 
-	controllerutil.SetControllerReference(cr, secretObject, r.scheme)
+	//controllerutil.SetControllerReference(cr, secretObject, r.scheme)
 
 	// Set the owner reference to make the Secret a child of the CephUser CR
 

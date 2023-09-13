@@ -32,6 +32,9 @@ type ProviderConfigSpec struct {
 
 	// The url for your radosgw endpoint.
 	HostName string `json:"hostname"`
+
+	// UseHTTPS radosgw cluster configuration.
+	UseHTTPS bool `json:"useHttps,omitempty"`
 }
 
 // ProviderCredentials required to authenticate.
