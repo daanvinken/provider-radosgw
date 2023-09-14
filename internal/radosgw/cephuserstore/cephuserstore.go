@@ -52,10 +52,10 @@ func (c *CephUserStore) GetByUID(cephUserUID string) *s3.Client {
 	return &s3.Client{}
 }
 
-func (c *CephUserStore) create(cephUser v1alpha1.CephUser, pc *apisv1alpha1.ProviderConfig) error {
+func (c *CephUserStore) create(cephUser v1alpha1.CephUser, creds *corev1.Secret, pc *apisv1alpha1.ProviderConfig) error {
 	c.l.Lock()
 	defer c.l.Unlock()
-	s3Client, err := internals3.NewClient(context.Background(), corev1.Secret{}, &pc.Spec)
+	s3Client, err := internals3.NewClient(context.Background(), *creds, &pc.Spec)
 	if err != nil {
 		return errors.Wrapf(err, "failed to create s3 client (cephUserUID = '%s')", cephUser.Spec.ForProvider.UID)
 	}
@@ -101,24 +101,45 @@ func (c *CephUserStore) Init(ctx context.Context, kubeClient client.Client) erro
 
 	//TODO error handling with a channel
 	for _, cephUser := range cephUserList.Items {
-		wg.Add(1)
+		pcRef := cephUser.Spec.ProviderConfigReference.Name
+		pc := apisv1alpha1.ProviderConfig{}
+		if err := kubeClient.Get(ctx, client.ObjectKey{Name: pcRef}, &pc); err != nil {
+			fmt.Printf("Error fetching ProviderConfig during initialization of CephUser clients: %v\n", err)
+			return err
+		}
+		credsSecret := corev1.Secret{}
+		if err := kubeClient.Get(ctx, client.ObjectKey{Name: *cephUser.Spec.ForProvider.CredentialsSecretName, Namespace: "crossplane"}, &credsSecret); err != nil {
+			fmt.Printf("Error fetching ProviderConfig during initialization of CephUser clients: %v\n", err)
+			return err
+		}
+		err := c.create(cephUser, &credsSecret, &pc)
+		if err != nil {
+			fmt.Printf("Error creating CephUser: %v\n", err)
+			return err
+		}
 
-		cephUser := cephUser
-		go func(user v1alpha1.CephUser) {
-			defer wg.Done()
-			pcRef := user.Spec.ProviderConfigReference.Name
-			pc := apisv1alpha1.ProviderConfig{}
-			if err := kubeClient.Get(ctx, client.ObjectKey{Name: pcRef}, &pc); err != nil {
-				fmt.Printf("Error fetching ProviderConfig during initialization of CephUser clients: %v\n", err)
-				return
-			}
+		//wg.Add(1)
 
-			err := c.create(cephUser, &pc)
-			if err != nil {
-				fmt.Printf("Error creating CephUser: %v\n", err)
-				return
-			}
-		}(cephUser)
+		//cephUser := cephUser
+		//go func(user v1alpha1.CephUser) {
+		//	defer wg.Done()
+		//	pcRef := user.Spec.ProviderConfigReference.Name
+		//	pc := apisv1alpha1.ProviderConfig{}
+		//	if err := kubeClient.Get(ctx, client.ObjectKey{Name: pcRef}, &pc); err != nil {
+		//		fmt.Printf("Error fetching ProviderConfig during initialization of CephUser clients: %v\n", err)
+		//		return
+		//	}
+		//	credsSecret := corev1.Secret{}
+		//	if err := kubeClient.Get(ctx, client.ObjectKey{Name: *user.Spec.ForProvider.CredentialsSecretName, Namespace: "crossplane"}, &credsSecret); err != nil {
+		//		fmt.Printf("Error fetching ProviderConfig during initialization of CephUser clients: %v\n", err)
+		//		return
+		//	}
+		//	err := c.create(cephUser, &credsSecret, &pc)
+		//	if err != nil {
+		//		fmt.Printf("Error creating CephUser: %v\n", err)
+		//		return
+		//	}
+		//}(cephUser)
 	}
 
 	wg.Wait()

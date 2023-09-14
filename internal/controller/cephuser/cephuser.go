@@ -221,10 +221,12 @@ func (c *external) Create(ctx context.Context, mg resource.Managed) (managed.Ext
 		return managed.ExternalCreation{}, err
 	}
 
-	// TODO secret should be a child object
+	// TODO secret should be a child object ALSO THIS DOS NOT WORK ?
 	cr.Spec.CredentialsSecretRef = corev1.LocalObjectReference{
 		Name: secretObject.Name,
 	}
+
+	cr.Spec.ForProvider.CredentialsSecretName = &secretObject.Name
 
 	//controllerutil.SetControllerReference(cr, secretObject, r.scheme)
 

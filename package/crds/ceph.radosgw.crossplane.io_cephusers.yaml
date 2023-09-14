@@ -74,6 +74,10 @@ spec:
               forProvider:
                 description: CephUserParameters are the configurable fields of a CephUser.
                 properties:
+                  credentialsSecretName:
+                    description: The name of the secreet containing S3 credentials
+                      for this user
+                    type: string
                   displayed_name:
                     description: The displayed name
                     type: string

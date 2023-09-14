@@ -42,6 +42,9 @@ type CephUserParameters struct {
 
 	// The number of objects for this user
 	UserQuotaMaxObjects *int64 `json:"user_quota_max_objects"`
+
+	// The name of the secreet containing S3 credentials for this user
+	CredentialsSecretName *string `json:"credentialsSecretName,omitempty"`
 }
 
 // CephUserObservation are the observable fields of a CephUser.

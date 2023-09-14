@@ -32,7 +32,7 @@ func GenerateBucketInput(bucket *v1alpha1.Bucket) *s3.CreateBucketInput {
 	return createBucketInput
 }
 
-func BucketExists(ctx context.Context, s3Backend *s3.Client, bucketName string) (bool, error) {
+func BucketExists(ctx context.Context, s3Backend s3.Client, bucketName string) (bool, error) {
 	_, err := s3Backend.HeadBucket(ctx, &s3.HeadBucketInput{Bucket: aws.String(bucketName)})
 	if err != nil {
 		return false, resource.Ignore(isNotFound, err)

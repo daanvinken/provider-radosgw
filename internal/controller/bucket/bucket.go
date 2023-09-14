@@ -113,6 +113,8 @@ func (c *connector) Connect(ctx context.Context, mg resource.Managed) (managed.E
 	}
 
 	// TODO can we use a direct objectreference, because user should be parent of bucket
+	x := *c.cephUserStore.GetByUID(cr.Spec.ForProvider.CephUserUID)
+	fmt.Println(x)
 	return &external{
 		kubeClient: c.kube,
 		// TODO how do we handle 'getbyuid' not found?
@@ -135,7 +137,7 @@ func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 		return managed.ExternalObservation{}, errors.New(errNotBucket)
 	}
 
-	bucketExists, err := s3internal.BucketExists(ctx, c.s3Client, cr.Spec.ForProvider.ExternalBucketName)
+	bucketExists, err := s3internal.BucketExists(ctx, *c.s3Client, cr.Spec.ForProvider.ExternalBucketName)
 
 	if err != nil {
 		c.log.Info("Failed to head bucket", "externalBucketName", cr.Spec.ForProvider.ExternalBucketName, "error", err)
