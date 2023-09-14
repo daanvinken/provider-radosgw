@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	xpv1 "github.com/crossplane/crossplane-runtime/apis/common/v1"
 	"github.com/crossplane/crossplane-runtime/pkg/logging"
 	"github.com/daanvinken/provider-radosgw/internal/radosgw/cephuserstore"
 
@@ -107,18 +108,22 @@ func (c *connector) Connect(ctx context.Context, mg resource.Managed) (managed.E
 	//TODO secrets fetching from vault
 
 	// Initialize all cephUser clients
+	c.log.Info("Initializing cephUserStore for multiple S3 backends")
 	err := c.cephUserStore.Init(context.Background(), c.kube)
 	if err != nil {
 		return &external{}, errors.Wrap(err, "Failed to initialize CephUserStore")
 	}
 
 	// TODO can we use a direct objectreference, because user should be parent of bucket
-	x := *c.cephUserStore.GetByUID(cr.Spec.ForProvider.CephUserUID)
-	fmt.Println(x)
+	s3Client, err := c.cephUserStore.GetByUID(cr.Spec.ForProvider.CephUserUID)
+	if err != nil {
+		c.log.Info(fmt.Sprintf("Failed to init client for CephUser '%s': %s", cr.Spec.ForProvider.CephUserUID, err))
+		return &external{}, err
+	}
 	return &external{
 		kubeClient: c.kube,
 		// TODO how do we handle 'getbyuid' not found?
-		s3Client: c.cephUserStore.GetByUID(cr.Spec.ForProvider.CephUserUID),
+		s3Client: s3Client,
 		log:      c.log,
 	}, nil
 }
@@ -142,6 +147,10 @@ func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 	if err != nil {
 		c.log.Info("Failed to head bucket", "externalBucketName", cr.Spec.ForProvider.ExternalBucketName, "error", err)
 	}
+
+	c.log.Debug(fmt.Sprintf("Observing bucket '%s'", cr.Spec.ForProvider.ExternalBucketName))
+
+	cr.Status.SetConditions(xpv1.Available())
 
 	if bucketExists {
 		return managed.ExternalObservation{
@@ -177,10 +186,23 @@ func (c *external) Create(ctx context.Context, mg resource.Managed) (managed.Ext
 	if !ok {
 		return managed.ExternalCreation{}, errors.New(errNotBucket)
 	}
+	cr.Status.SetConditions(xpv1.Creating())
 
-	_, err := c.s3Client.CreateBucket(ctx, s3internal.GenerateBucketInput(cr))
+	err := c.kubeClient.Update(ctx, cr)
+	if err != nil {
+		return managed.ExternalCreation{}, err
+	}
+
+	_, err = c.s3Client.CreateBucket(ctx, s3internal.GenerateBucketInput(cr))
 	if err != nil {
 		c.log.Info("Failed to create bucket", "externalBucketName", cr.Spec.ForProvider.ExternalBucketName, "error", err.Error())
+		return managed.ExternalCreation{}, err
+	}
+
+	cr.Status.SetConditions(xpv1.Creating())
+
+	err = c.kubeClient.Update(ctx, cr)
+	if err != nil {
 		return managed.ExternalCreation{}, err
 	}
 
@@ -192,12 +214,10 @@ func (c *external) Create(ctx context.Context, mg resource.Managed) (managed.Ext
 }
 
 func (c *external) Update(ctx context.Context, mg resource.Managed) (managed.ExternalUpdate, error) {
-	cr, ok := mg.(*v1alpha1.Bucket)
+	_, ok := mg.(*v1alpha1.Bucket)
 	if !ok {
 		return managed.ExternalUpdate{}, errors.New(errNotBucket)
 	}
-
-	fmt.Printf("Updating: %+v", cr)
 
 	return managed.ExternalUpdate{
 		// Optionally return any details that may be required to connect to the
@@ -211,8 +231,13 @@ func (c *external) Delete(ctx context.Context, mg resource.Managed) error {
 	if !ok {
 		return errors.New(errNotBucket)
 	}
+	c.log.Info("Deleting bucket")
 
-	fmt.Printf("Deleting: %+v", cr)
+	_, err := c.s3Client.DeleteBucket(ctx, &s3.DeleteBucketInput{Bucket: &cr.Spec.ForProvider.ExternalBucketName})
+	if err != nil {
+		c.log.Info("failed to delete bucket", "externalBucketName", cr.Spec.ForProvider.ExternalBucketName, "error", err.Error())
+		return errors.Wrap(err, "failed to delete bucket")
+	}
 
 	return nil
 }

@@ -28,6 +28,9 @@ spec:
     - jsonPath: .metadata.annotations.crossplane\.io/external-name
       name: EXTERNAL-NAME
       type: string
+    - jsonPath: .spec.forProvider.cephUserUID
+      name: USER_UID
+      type: string
     - jsonPath: .metadata.creationTimestamp
       name: AGE
       type: date
