@@ -30,6 +30,7 @@ import (
 	"github.com/crossplane/crossplane-runtime/pkg/resource"
 	"github.com/daanvinken/provider-radosgw/apis/ceph/v1alpha1"
 	apisv1alpha1 "github.com/daanvinken/provider-radosgw/apis/v1alpha1"
+	"github.com/daanvinken/provider-radosgw/internal/credentials"
 	"github.com/daanvinken/provider-radosgw/internal/features"
 	"github.com/daanvinken/provider-radosgw/internal/radosgw"
 	"github.com/pkg/errors"
@@ -122,7 +123,7 @@ func (c *connector) Connect(ctx context.Context, mg resource.Managed) (managed.E
 	}
 
 	cd := pc.Spec.Credentials
-	b_AccessKey, b_SecretKey, err := radosgw.CephCredentialExtractor(ctx, cd, c.kube)
+	b_AccessKey, b_SecretKey, err := credentials.CephCredentialExtractor(ctx, cd, c.kube)
 	if err != nil {
 		return nil, errors.Wrap(err, errGetCreds)
 	}
@@ -208,7 +209,7 @@ func (c *external) Create(ctx context.Context, mg resource.Managed) (managed.Ext
 	}
 
 	// TODO fetch the current crossplane namespace
-	secretObject := radosgw.CreateKubernetesSecretCephUser(
+	secretObject := credentials.CreateKubernetesSecretCephUser(
 		user.Keys[0].AccessKey,
 		user.Keys[0].SecretKey,
 		"crossplane",

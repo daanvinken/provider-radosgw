@@ -1,4 +1,4 @@
-package radosgw
+package credentials
 
 import (
 	"context"
@@ -24,7 +24,7 @@ func CephCredentialExtractor(ctx context.Context, cd v1alpha1.ProviderCredential
 	return secret.Data["access_key"], secret.Data["secret_key"], nil
 }
 
-func generateRandomSecret(length int) string {
+func GenerateRandomSecret(length int) string {
 	rand.Seed(time.Now().UnixNano())
 	secret := make([]byte, length)
 

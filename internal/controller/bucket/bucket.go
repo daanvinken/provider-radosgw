@@ -23,6 +23,7 @@ import (
 	xpv1 "github.com/crossplane/crossplane-runtime/apis/common/v1"
 	"github.com/crossplane/crossplane-runtime/pkg/logging"
 	"github.com/daanvinken/provider-radosgw/internal/radosgw/cephuserstore"
+	"sync"
 
 	"github.com/pkg/errors"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -53,6 +54,8 @@ type NoOpService struct{}
 var (
 	newNoOpService = func(_ []byte) (interface{}, error) { return &NoOpService{}, nil }
 )
+
+var initCephUserStoreOnce sync.Once
 
 // Setup adds a controller that reconciles Bucket managed resources.
 func Setup(mgr ctrl.Manager, o controller.Options, c *cephuserstore.CephUserStore) error {
@@ -105,14 +108,16 @@ func (c *connector) Connect(ctx context.Context, mg resource.Managed) (managed.E
 		return nil, errors.New(errNotBucket)
 	}
 
-	//TODO secrets fetching from vault
+	//TODO secrets fetching from credentials
 
-	// Initialize all cephUser clients
-	c.log.Info("Initializing cephUserStore for multiple S3 backends")
-	err := c.cephUserStore.Init(context.Background(), c.kube)
-	if err != nil {
-		return &external{}, errors.Wrap(err, "Failed to initialize CephUserStore")
-	}
+	// Initialize all cephUser clients only once
+	initCephUserStoreOnce.Do(func() {
+		c.log.Info("Initializing cephUserStore for multiple S3 backends")
+		err := c.cephUserStore.Init(context.Background(), c.kube)
+		if err != nil {
+			panic(errors.Wrap(err, "Failed to initialize CephUserStore. Cannot start reconciliation"))
+		}
+	})
 
 	// TODO can we use a direct objectreference, because user should be parent of bucket
 	s3Client, err := c.cephUserStore.GetByUID(cr.Spec.ForProvider.CephUserUID)

@@ -34,15 +34,6 @@ func New() (c *CephUserStore) {
 	return
 }
 
-func (c *CephUserStore) Get(cephUser v1alpha1.CephUser) s3.Client {
-	c.l.RLock()
-	defer c.l.RUnlock()
-	if _, ok := c.CephUserRecords[*cephUser.Spec.ForProvider.UID]; ok {
-		return c.CephUserRecords[*cephUser.Spec.ForProvider.UID].s3Client
-	}
-	return s3.Client{}
-}
-
 func (c *CephUserStore) GetByUID(cephUserUID string) (*s3.Client, error) {
 	c.l.RLock()
 	defer c.l.RUnlock()
@@ -78,11 +69,6 @@ func (c *CephUserStore) Delete(cephUser v1alpha1.CephUser) error {
 	if !exists {
 		return nil
 	}
-
-	// TODO can we close the client?
-	//if err := userRecord.s3Client.Close(); err != nil {
-	//	return errors.Wrapf(err, "failed to close S3 client for cephUserUID '%s'", *cephUser.Spec.ForProvider.UID)
-	//}
 
 	delete(c.CephUserRecords, *cephUser.Spec.ForProvider.UID)
 
