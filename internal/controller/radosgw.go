@@ -38,11 +38,11 @@ func Setup(mgr ctrl.Manager, o controller.Options) error {
 		}
 	}
 
-	for _, setup := range []func(ctrl.Manager, controller.Options, cephuserstore.CephUserStore) error{
+	for _, setup := range []func(ctrl.Manager, controller.Options, *cephuserstore.CephUserStore) error{
 		bucket.Setup,
 	} {
 		c := *cephuserstore.New()
-		if err := setup(mgr, o, c); err != nil {
+		if err := setup(mgr, o, &c); err != nil {
 			return err
 		}
 	}

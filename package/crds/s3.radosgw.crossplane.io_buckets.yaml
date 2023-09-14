@@ -3,7 +3,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.12.1
+    controller-gen.kubebuilder.io/version: v0.13.0
   name: buckets.s3.radosgw.crossplane.io
 spec:
   group: s3.radosgw.crossplane.io
@@ -67,6 +67,9 @@ spec:
               forProvider:
                 description: BucketParameters are the configurable fields of a Bucket.
                 properties:
+                  cephUserUID:
+                    description: The cephUser UID owning this bucket
+                    type: string
                   externalBucketName:
                     description: The external bucket name
                     type: string
@@ -74,6 +77,7 @@ spec:
                     description: Specifies the Region where the bucket will be created.
                     type: string
                 required:
+                - cephUserUID
                 - externalBucketName
                 type: object
               managementPolicies:

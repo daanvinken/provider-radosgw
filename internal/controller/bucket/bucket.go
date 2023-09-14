@@ -19,15 +19,14 @@ package bucket
 import (
 	"context"
 	"fmt"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/crossplane/crossplane-runtime/pkg/logging"
 	"github.com/daanvinken/provider-radosgw/internal/radosgw/cephuserstore"
 
 	"github.com/pkg/errors"
-	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/crossplane/crossplane-runtime/pkg/controller"
 	"github.com/crossplane/crossplane-runtime/pkg/event"
 	"github.com/crossplane/crossplane-runtime/pkg/ratelimiter"
@@ -62,7 +61,6 @@ func Setup(mgr ctrl.Manager, o controller.Options, c *cephuserstore.CephUserStor
 	//if o.Features.Enabled(features.EnableAlphaExternalSecretStores) {
 	//	cps = append(cps, connection.NewDetailsManager(mgr.GetClient(), apisv1alpha1.StoreConfigGroupVersionKind))
 	//}
-
 	r := managed.NewReconciler(mgr,
 		resource.ManagedKind(v1alpha1.BucketGroupVersionKind),
 		managed.WithExternalConnecter(&connector{
@@ -70,6 +68,7 @@ func Setup(mgr ctrl.Manager, o controller.Options, c *cephuserstore.CephUserStor
 			usage:         resource.NewProviderConfigUsageTracker(mgr.GetClient(), &apisv1alpha1.ProviderConfigUsage{}),
 			newServiceFn:  newNoOpService,
 			cephUserStore: c,
+			log:           o.Logger.WithValues("controller", name),
 		}),
 		managed.WithLogger(o.Logger.WithValues("controller", name)),
 		managed.WithPollInterval(o.PollInterval),
@@ -91,6 +90,7 @@ type connector struct {
 	usage         resource.Tracker
 	newServiceFn  func(creds []byte) (interface{}, error)
 	cephUserStore *cephuserstore.CephUserStore
+	log           logging.Logger
 }
 
 // Connect typically produces an ExternalClient by:
@@ -104,27 +104,21 @@ func (c *connector) Connect(ctx context.Context, mg resource.Managed) (managed.E
 		return nil, errors.New(errNotBucket)
 	}
 
-	if err := c.usage.Track(ctx, mg); err != nil {
-		return nil, errors.Wrap(err, errTrackPCUsage)
-	}
+	//TODO secrets fetching from vault
 
-	pc := &apisv1alpha1.ProviderConfig{}
-	if err := c.kube.Get(ctx, types.NamespacedName{Name: cr.GetProviderConfigReference().Name}, pc); err != nil {
-		return nil, errors.Wrap(err, errGetPC)
-	}
-
-	cd := pc.Spec.Credentials
-	data, err := resource.CommonCredentialExtractor(ctx, cd.Source, c.kube, cd.CommonCredentialSelectors)
+	// Initialize all cephUser clients
+	err := c.cephUserStore.Init(context.Background(), c.kube)
 	if err != nil {
-		return nil, errors.Wrap(err, errGetCreds)
+		return &external{}, errors.Wrap(err, "Failed to initialize CephUserStore")
 	}
 
-	svc, err := c.newServiceFn(data)
-	if err != nil {
-		return nil, errors.Wrap(err, errNewCephUserStore)
-	}
-
-	return &external{service: svc}, nil
+	// TODO can we use a direct objectreference, because user should be parent of bucket
+	return &external{
+		kubeClient: c.kube,
+		// TODO how do we handle 'getbyuid' not found?
+		s3Client: c.cephUserStore.GetByUID(cr.Spec.ForProvider.CephUserUID),
+		log:      c.log,
+	}, nil
 }
 
 // An ExternalClient observes, then either creates, updates, or deletes an
@@ -144,7 +138,7 @@ func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 	bucketExists, err := s3internal.BucketExists(ctx, c.s3Client, cr.Spec.ForProvider.ExternalBucketName)
 
 	if err != nil {
-		c.log.Info("Failed to head bucket", "externalBucketName", cr.Spec.ForProvider.ExternalBucketName, "error", err.Error())
+		c.log.Info("Failed to head bucket", "externalBucketName", cr.Spec.ForProvider.ExternalBucketName, "error", err)
 	}
 
 	if bucketExists {

@@ -31,6 +31,8 @@ type BucketParameters struct {
 	ExternalBucketName string `json:"externalBucketName"`
 	// Specifies the Region where the bucket will be created.
 	LocationConstraint string `json:"locationConstraint,omitempty"`
+	// The cephUser UID owning this bucket
+	CephUserUID string `json:"cephUserUID"`
 }
 
 // BucketObservation are the observable fields of a Bucket.

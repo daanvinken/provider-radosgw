@@ -1,11 +1,11 @@
 apiVersion: s3.radosgw.crossplane.io/v1alpha1
 kind: Bucket
 metadata:
-  name: my-test-buck
+  name: my-test-buck-a
 spec:
   forProvider:
-    externalBucketName: my-test-buck
+    externalBucketName: my-test-buck-a
     locationConstraint: default
-    cephUserUID: mytestuser-b
+    cephUserUID: mytestuser-a
   providerConfigRef:
     name: ceph-admin-cfg
