@@ -18,7 +18,6 @@ package cephuser
 
 import (
 	"context"
-	"fmt"
 	radosgw_admin "github.com/ceph/go-ceph/rgw/admin"
 	xpv1 "github.com/crossplane/crossplane-runtime/apis/common/v1"
 	"github.com/crossplane/crossplane-runtime/pkg/connection"
@@ -35,6 +34,7 @@ import (
 	"github.com/daanvinken/provider-radosgw/internal/radosgw"
 	"github.com/pkg/errors"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"net/http"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -77,7 +77,8 @@ func Setup(mgr ctrl.Manager, o controller.Options) error {
 		managed.WithExternalConnecter(&connector{
 			kube:         mgr.GetClient(),
 			usage:        resource.NewProviderConfigUsageTracker(mgr.GetClient(), &apisv1alpha1.ProviderConfigUsage{}),
-			newServiceFn: newNoOpService}),
+			newServiceFn: newNoOpService,
+			scheme:       mgr.GetScheme()}),
 		managed.WithLogger(o.Logger.WithValues("controller", name)),
 		managed.WithPollInterval(o.PollInterval),
 		managed.WithRecorder(event.NewAPIRecorder(mgr.GetEventRecorderFor(name))),
@@ -100,6 +101,7 @@ type connector struct {
 	newRadosgwClient func(AccessKey string, SecretKey string, HttpClient http.Client, Endpoint string) (radosgw_admin.API, error)
 	newServiceFn     func(creds []byte) (interface{}, error)
 	log              logging.Logger
+	scheme           *runtime.Scheme
 }
 
 // Connect typically produces an ExternalClient by:
@@ -134,7 +136,7 @@ func (c *connector) Connect(ctx context.Context, mg resource.Managed) (managed.E
 		return nil, errors.Wrap(err, errNewClient)
 	}
 	return &external{
-		rgw_client: rgwClient,
+		rgwClient:  rgwClient,
 		kubeClient: c.kube,
 	}, err
 }
@@ -143,7 +145,7 @@ func (c *connector) Connect(ctx context.Context, mg resource.Managed) (managed.E
 // external resource to ensure it reflects the managed resource's desired state.
 type external struct {
 	kubeClient client.Client
-	rgw_client *radosgw_admin.API
+	rgwClient  *radosgw_admin.API
 	log        logging.Logger
 }
 
@@ -159,7 +161,7 @@ func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 	ctxC, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	cephUserExists, err := radosgw.CephUserExists(ctxC, c.rgw_client, *cr.Spec.ForProvider.UID)
+	cephUserExists, err := radosgw.CephUserExists(ctxC, c.rgwClient, *cr.Spec.ForProvider.UID)
 	if err != nil {
 		c.log.Info(errors.Wrap(err, errGetCephUser).Error())
 	}
@@ -201,18 +203,18 @@ func (c *external) Create(ctx context.Context, mg resource.Managed) (managed.Ext
 	//fmt.Printf("Creating: %+v", cr)
 
 	user := radosgw.GenerateCephUserInput(cr)
-	_, err := c.rgw_client.CreateUser(ctx, *user)
+	_, err := c.rgwClient.CreateUser(ctx, *user)
 	if resource.Ignore(isAlreadyExists, err) != nil {
 		c.log.Info("Failed to create cephUser on radosgw", "cephUser_uid", cr.Spec.ForProvider.UID, "error", err.Error())
 		return managed.ExternalCreation{}, errors.Wrap(err, errCreateCephUser)
 
 	}
 
-	// TODO fetch the current crossplane namespace
+	// TODO move to vault in-memory
 	secretObject := credentials.CreateKubernetesSecretCephUser(
 		user.Keys[0].AccessKey,
 		user.Keys[0].SecretKey,
-		"crossplane",
+		mg.GetNamespace(),
 		*cr.Spec.ForProvider.UID,
 	)
 
@@ -221,17 +223,6 @@ func (c *external) Create(ctx context.Context, mg resource.Managed) (managed.Ext
 		c.log.Info("Failed to store cephUser credentials to K8s api", "cephUser_uid", cr.Spec.ForProvider.UID, "error", err.Error())
 		return managed.ExternalCreation{}, err
 	}
-
-	// TODO secret should be a child object ALSO THIS DOS NOT WORK ?
-	cr.Spec.CredentialsSecretRef = corev1.LocalObjectReference{
-		Name: secretObject.Name,
-	}
-
-	cr.Spec.ForProvider.CredentialsSecretName = &secretObject.Name
-
-	//controllerutil.SetControllerReference(cr, secretObject, r.scheme)
-
-	// Set the owner reference to make the Secret a child of the CephUser CR
 
 	err = c.kubeClient.Update(ctx, cr)
 	if err != nil {
@@ -244,7 +235,6 @@ func (c *external) Create(ctx context.Context, mg resource.Managed) (managed.Ext
 		c.log.Info("Failed to update cephUser", "backend name", "cephUser_uid", cr.Spec.ForProvider.UID)
 	}
 
-	// TODO should we add the finalizer here already? Maybe only on adding at first bucket
 	if controllerutil.AddFinalizer(cr, inUseFinalizer) {
 		err := c.kubeClient.Update(ctx, cr)
 		if err != nil {
@@ -252,11 +242,6 @@ func (c *external) Create(ctx context.Context, mg resource.Managed) (managed.Ext
 		}
 	}
 
-	//return managed.ExternalCreation{
-	//	// Optionally return any details that may be required to connect to the
-	//	// external resource. These will be stored as the connection secret.
-	//	ConnectionDetails: managed.ConnectionDetails{},
-	//}, nil
 	return managed.ExternalCreation{}, nil
 }
 
@@ -266,7 +251,7 @@ func (c *external) Update(ctx context.Context, mg resource.Managed) (managed.Ext
 		return managed.ExternalUpdate{}, errors.New(errNotCephUser)
 	}
 
-	fmt.Println("Updating but not implemented.")
+	c.log.Debug("Updating CRD but not implemented.", "name", mg.GetName())
 
 	return managed.ExternalUpdate{
 		// Optionally return any details that may be required to connect to the
@@ -281,10 +266,8 @@ func (c *external) Delete(ctx context.Context, mg resource.Managed) error {
 		return errors.New(errNotCephUser)
 	}
 
-	// TODO write helper function to check for existing buckets using AWS sdk
-	// However maybe we can do this by just properly setting buckets as child objects
-
-	// Also need to verify how radosgw hanles deletion while buckets exist under a user
+	// Radosgw also doesn't allow removal if the user has buckets.
+	// TODO Still I think we shouldn't just trust this
 	if controllerutil.RemoveFinalizer(cr, inUseFinalizer) {
 		err := c.kubeClient.Update(ctx, cr)
 		if err != nil {
@@ -294,7 +277,7 @@ func (c *external) Delete(ctx context.Context, mg resource.Managed) error {
 	}
 
 	user := radosgw.GenerateCephUserInput(cr)
-	err := c.rgw_client.RemoveUser(ctx, *user)
+	err := c.rgwClient.RemoveUser(ctx, *user)
 	if err != nil {
 		c.log.Info("Failed to remove cephUser on radosgw", "cephUser_uid", cr.Spec.ForProvider.UID, "error", err.Error())
 		return errors.Wrap(err, errDeleteCephUser)

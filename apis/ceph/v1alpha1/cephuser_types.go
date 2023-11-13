@@ -17,7 +17,6 @@ limitations under the License.
 package v1alpha1
 
 import (
-	corev1 "k8s.io/api/core/v1"
 	"reflect"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -32,19 +31,16 @@ type CephUserParameters struct {
 	UID *string `json:"uid"`
 
 	// The displayed name
-	DisplayedName *string `json:"displayed_name"`
+	DisplayedName *string `json:"displayedName"`
 
 	// The max number of objects allowed for this user
-	UserQuotaMaxBuckets *int `json:"user_quota_max_buckets"`
+	UserQuotaMaxBuckets *int `json:"userQuotaMaxBuckets"`
 
 	// The maximum storage size (total) in MB
-	UserQuotaMaxSizeKB *int `json:"user_quota_max_size_kb"`
+	UserQuotaMaxSizeKB *int `json:"userQuotaMaxSizeKB"`
 
 	// The number of objects for this user
-	UserQuotaMaxObjects *int64 `json:"user_quota_max_objects"`
-
-	// The name of the secreet containing S3 credentials for this user
-	CredentialsSecretName *string `json:"credentialsSecretName,omitempty"`
+	UserQuotaMaxObjects *int64 `json:"userQuotaMaxObjects"`
 }
 
 // CephUserObservation are the observable fields of a CephUser.
@@ -54,9 +50,8 @@ type CephUserObservation struct {
 
 // A CephUserSpec defines the desired state of a CephUser.
 type CephUserSpec struct {
-	xpv1.ResourceSpec    `json:",inline"`
-	ForProvider          CephUserParameters          `json:"forProvider"`
-	CredentialsSecretRef corev1.LocalObjectReference `json:"credentialsSecretRef,omitempty"`
+	xpv1.ResourceSpec `json:",inline"`
+	ForProvider       CephUserParameters `json:"forProvider"`
 }
 
 // A CephUserStatus represents the observed state of a CephUser.

@@ -21,7 +21,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 
 	cephv1alpha1 "github.com/daanvinken/provider-radosgw/apis/ceph/v1alpha1"
-	s3v1alpha "github.com/daanvinken/provider-radosgw/apis/s3/v1alpha1"
 	radosgwv1alpha1 "github.com/daanvinken/provider-radosgw/apis/v1alpha1"
 )
 
@@ -30,7 +29,6 @@ func init() {
 	AddToSchemes = append(AddToSchemes,
 		radosgwv1alpha1.SchemeBuilder.AddToScheme,
 		cephv1alpha1.SchemeBuilder.AddToScheme,
-		s3v1alpha.SchemeBuilder.AddToScheme,
 	)
 }
 

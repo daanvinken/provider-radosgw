@@ -25,10 +25,30 @@ import (
 	xpv1 "github.com/crossplane/crossplane-runtime/apis/common/v1"
 )
 
+type VaultConfig struct {
+	// The version of the Vault KV store to use ("1" or "2")
+	KVVersion string `json:"kvVersion"`
+
+	// The address of the Vault server (e.g., "https://vault.example.com:8200")
+	Address string `json:"address"`
+
+	// The vault human readable name
+	Name string `json:"Name"`
+
+	// The name of the Kubernetes service account authorized to access Vault
+	ServiceAccountName string `json:"serviceAccountName"`
+
+	// The mount path in Vault where the credentials are stored
+	MountPath string `json:"mountPath"`
+}
+
 // A ProviderConfigSpec defines the desired state of a ProviderConfig.
 type ProviderConfigSpec struct {
 	// Credentials required to authenticate to this provider.
 	Credentials ProviderCredentials `json:"credentials"`
+
+	// Settings for storing CephUser credentials in vault
+	Vault VaultConfig `json:"vaultSettings""`
 
 	// The url for your radosgw endpoint.
 	HostName string `json:"hostname"`

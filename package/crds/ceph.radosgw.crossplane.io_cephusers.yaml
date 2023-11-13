@@ -48,16 +48,6 @@ spec:
           spec:
             description: A CephUserSpec defines the desired state of a CephUser.
             properties:
-              credentialsSecretRef:
-                description: LocalObjectReference contains enough information to let
-                  you locate the referenced object inside the same namespace.
-                properties:
-                  name:
-                    description: 'Name of the referent. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
-                      TODO: Add other useful fields. apiVersion, kind, uid?'
-                    type: string
-                type: object
-                x-kubernetes-map-type: atomic
               deletionPolicy:
                 default: Delete
                 description: 'DeletionPolicy specifies what will happen to the underlying
@@ -74,32 +64,28 @@ spec:
               forProvider:
                 description: CephUserParameters are the configurable fields of a CephUser.
                 properties:
-                  credentialsSecretName:
-                    description: The name of the secreet containing S3 credentials
-                      for this user
-                    type: string
-                  displayed_name:
+                  displayedName:
                     description: The displayed name
                     type: string
                   uid:
                     description: The uid of the user (human readable string)
                     type: string
-                  user_quota_max_buckets:
+                  userQuotaMaxBuckets:
                     description: The max number of objects allowed for this user
                     type: integer
-                  user_quota_max_objects:
+                  userQuotaMaxObjects:
                     description: The number of objects for this user
                     format: int64
                     type: integer
-                  user_quota_max_size_kb:
+                  userQuotaMaxSizeKB:
                     description: The maximum storage size (total) in MB
                     type: integer
                 required:
-                - displayed_name
+                - displayedName
                 - uid
-                - user_quota_max_buckets
-                - user_quota_max_objects
-                - user_quota_max_size_kb
+                - userQuotaMaxBuckets
+                - userQuotaMaxObjects
+                - userQuotaMaxSizeKB
                 type: object
               managementPolicies:
                 default:

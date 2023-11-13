@@ -18,9 +18,7 @@ package controller
 
 import (
 	"github.com/crossplane/crossplane-runtime/pkg/controller"
-	"github.com/daanvinken/provider-radosgw/internal/controller/bucket"
 	"github.com/daanvinken/provider-radosgw/internal/controller/cephuser"
-	"github.com/daanvinken/provider-radosgw/internal/radosgw/cephuserstore"
 	ctrl "sigs.k8s.io/controller-runtime"
 
 	"github.com/daanvinken/provider-radosgw/internal/controller/config"
@@ -34,15 +32,6 @@ func Setup(mgr ctrl.Manager, o controller.Options) error {
 		cephuser.Setup,
 	} {
 		if err := setup(mgr, o); err != nil {
-			return err
-		}
-	}
-
-	for _, setup := range []func(ctrl.Manager, controller.Options, *cephuserstore.CephUserStore) error{
-		bucket.Setup,
-	} {
-		c := *cephuserstore.New()
-		if err := setup(mgr, o, &c); err != nil {
 			return err
 		}
 	}
