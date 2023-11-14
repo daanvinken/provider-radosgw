@@ -18,6 +18,7 @@ package cephuser
 
 import (
 	"context"
+	"fmt"
 	radosgw_admin "github.com/ceph/go-ceph/rgw/admin"
 	xpv1 "github.com/crossplane/crossplane-runtime/apis/common/v1"
 	"github.com/crossplane/crossplane-runtime/pkg/connection"
@@ -32,6 +33,7 @@ import (
 	"github.com/daanvinken/provider-radosgw/internal/credentials"
 	"github.com/daanvinken/provider-radosgw/internal/features"
 	"github.com/daanvinken/provider-radosgw/internal/radosgw"
+	vault "github.com/hashicorp/vault/api"
 	"github.com/pkg/errors"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -44,14 +46,15 @@ import (
 )
 
 const (
-	errNotCephUser    = "managed resource is not a CephUser custom resource"
-	errTrackPCUsage   = "cannot track ProviderConfig usage"
-	errGetPC          = "cannot get ProviderConfig"
-	errGetCreds       = "cannot get credentials"
-	errNewClient      = "cannot create new radosgw client"
-	errGetCephUser    = "Failed to retrieve cephuser"
-	errCreateCephUser = "Failed to create cephuser"
-	errDeleteCephUser = "Failed to delete cephuser"
+	errNotCephUser            = "managed resource is not a CephUser custom resource"
+	errTrackPCUsage           = "cannot track ProviderConfig usage"
+	errGetPC                  = "cannot get ProviderConfig"
+	errGetCreds               = "cannot get Ceph admin credentials from Vault"
+	errCreateAdminVaultClient = "failed to initialize Vault client to retrieve Ceph admin credentials"
+	errNewClient              = "cannot create new radosgw client"
+	errGetCephUser            = "Failed to retrieve cephuser"
+	errCreateCephUser         = "Failed to create cephuser"
+	errDeleteCephUser         = "Failed to delete cephuser"
 
 	inUseFinalizer = "cephuser-in-use.ceph.radosgw.crossplane.io"
 )
@@ -72,13 +75,20 @@ func Setup(mgr ctrl.Manager, o controller.Options) error {
 		cps = append(cps, connection.NewDetailsManager(mgr.GetClient(), apisv1alpha1.StoreConfigGroupVersionKind))
 	}
 
+	vaultAdminClient, err := credentials.NewVaultClientForCephAdmins()
+	if err != nil {
+		panic(errors.Wrap(err, errCreateAdminVaultClient))
+	}
+
 	r := managed.NewReconciler(mgr,
 		resource.ManagedKind(v1alpha1.CephUserGroupVersionKind),
 		managed.WithExternalConnecter(&connector{
-			kube:         mgr.GetClient(),
-			usage:        resource.NewProviderConfigUsageTracker(mgr.GetClient(), &apisv1alpha1.ProviderConfigUsage{}),
-			newServiceFn: newNoOpService,
-			scheme:       mgr.GetScheme()}),
+			kube:             mgr.GetClient(),
+			usage:            resource.NewProviderConfigUsageTracker(mgr.GetClient(), &apisv1alpha1.ProviderConfigUsage{}),
+			newServiceFn:     newNoOpService,
+			vaultAdminClient: vaultAdminClient,
+			scheme:           mgr.GetScheme(),
+			log:              o.Logger.WithValues("controller", name)}),
 		managed.WithLogger(o.Logger.WithValues("controller", name)),
 		managed.WithPollInterval(o.PollInterval),
 		managed.WithRecorder(event.NewAPIRecorder(mgr.GetEventRecorderFor(name))),
@@ -98,10 +108,10 @@ func Setup(mgr ctrl.Manager, o controller.Options) error {
 type connector struct {
 	kube             client.Client
 	usage            resource.Tracker
-	newRadosgwClient func(AccessKey string, SecretKey string, HttpClient http.Client, Endpoint string) (radosgw_admin.API, error)
 	newServiceFn     func(creds []byte) (interface{}, error)
 	log              logging.Logger
 	scheme           *runtime.Scheme
+	vaultAdminClient *vault.Client
 }
 
 // Connect typically produces an ExternalClient by:
@@ -124,29 +134,48 @@ func (c *connector) Connect(ctx context.Context, mg resource.Managed) (managed.E
 		return nil, errors.Wrap(err, errGetPC)
 	}
 
-	cd := pc.Spec.Credentials
-	b_AccessKey, b_SecretKey, err := credentials.CephCredentialExtractor(ctx, cd, c.kube)
+	kvSecret, err := c.vaultAdminClient.KVv1("k8s-cl03").Get(context.Background(), "crossplane/ceph/admin-credentials")
 	if err != nil {
 		return nil, errors.Wrap(err, errGetCreds)
 	}
 
+	secretKey, ok := kvSecret.Data["secret_key"].(string)
+	if !ok {
+		return nil, errors.New("unable to extract secret data 'secret_key'")
+	}
+
+	accessKey, ok := kvSecret.Data["access_key"].(string)
+	if !ok {
+		return nil, errors.New("unable to extract secret data 'access_key'")
+	}
+
 	httpClient := &http.Client{}
-	rgwClient, err := radosgw_admin.New(pc.Spec.HostName, string(b_AccessKey), string(b_SecretKey), httpClient)
+	rgwClient, err := radosgw_admin.New(pc.Spec.HostName, accessKey, secretKey, httpClient)
+
 	if err != nil {
 		return nil, errors.Wrap(err, errNewClient)
 	}
+
+	vaultClient, err := credentials.NewVaultClient(pc.Spec.CredentialsVault)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to create vault client for storing ceph credentials")
+	}
+
 	return &external{
-		rgwClient:  rgwClient,
-		kubeClient: c.kube,
+		rgwClient:   rgwClient,
+		kubeClient:  c.kube,
+		log:         c.log,
+		vaultClient: vaultClient,
 	}, err
 }
 
 // An ExternalClient observes, then either creates, updates, or deletes an
 // external resource to ensure it reflects the managed resource's desired state.
 type external struct {
-	kubeClient client.Client
-	rgwClient  *radosgw_admin.API
-	log        logging.Logger
+	kubeClient  client.Client
+	rgwClient   *radosgw_admin.API
+	vaultClient *vault.Client
+	log         logging.Logger
 }
 
 func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.ExternalObservation, error) {
@@ -156,6 +185,7 @@ func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 	}
 
 	// TODO verify the configured backend? Or should we do a seperate healthcheck ?
+	fmt.Printf("Observing: %+v\n", cr.GetName())
 
 	// Create a new context and cancel it when we have either found the user or cannot find it.
 	ctxC, cancel := context.WithCancel(ctx)
@@ -200,8 +230,6 @@ func (c *external) Create(ctx context.Context, mg resource.Managed) (managed.Ext
 		return managed.ExternalCreation{}, errors.New(errNotCephUser)
 	}
 
-	//fmt.Printf("Creating: %+v", cr)
-
 	user := radosgw.GenerateCephUserInput(cr)
 	_, err := c.rgwClient.CreateUser(ctx, *user)
 	if resource.Ignore(isAlreadyExists, err) != nil {
@@ -210,17 +238,26 @@ func (c *external) Create(ctx context.Context, mg resource.Managed) (managed.Ext
 
 	}
 
-	// TODO move to vault in-memory
-	secretObject := credentials.CreateKubernetesSecretCephUser(
-		user.Keys[0].AccessKey,
-		user.Keys[0].SecretKey,
-		mg.GetNamespace(),
-		*cr.Spec.ForProvider.UID,
-	)
+	credentialsData := map[string]interface{}{
+		"access_key": user.Keys[0].AccessKey,
+		"secret_key": user.Keys[0].SecretKey,
+	}
 
-	err = c.kubeClient.Create(ctx, &secretObject)
+	pc := &apisv1alpha1.ProviderConfig{}
+	if err := c.kubeClient.Get(ctx, types.NamespacedName{Name: cr.GetProviderConfigReference().Name}, pc); err != nil {
+		return managed.ExternalCreation{}, err
+	}
+
+	secretPath, err := credentials.BuildCephUserSecretPath(*pc, *cr.Spec.ForProvider.UID)
+
 	if err != nil {
-		c.log.Info("Failed to store cephUser credentials to K8s api", "cephUser_uid", cr.Spec.ForProvider.UID, "error", err.Error())
+		c.log.Info(fmt.Sprintf("Failed to build secret path for storing CephUser credentials: '%v+'", err))
+		return managed.ExternalCreation{}, err
+	}
+
+	err = credentials.WriteSecretsToVault(c.vaultClient, pc.Spec.CredentialsVault, &secretPath, &credentialsData)
+	if err != nil {
+		//TODO remove user from radosgw again to fix state. Actually use defer with context.
 		return managed.ExternalCreation{}, err
 	}
 
@@ -251,7 +288,7 @@ func (c *external) Update(ctx context.Context, mg resource.Managed) (managed.Ext
 		return managed.ExternalUpdate{}, errors.New(errNotCephUser)
 	}
 
-	c.log.Debug("Updating CRD but not implemented.", "name", mg.GetName())
+	c.log.Debug("Updating CRD but not implemented.")
 
 	return managed.ExternalUpdate{
 		// Optionally return any details that may be required to connect to the

@@ -38,17 +38,17 @@ type VaultConfig struct {
 	// The name of the Kubernetes service account authorized to access Vault
 	ServiceAccountName string `json:"serviceAccountName"`
 
-	// The mount path in Vault where the credentials are stored
+	// The mount path in Vault where the secrets engine is
 	MountPath string `json:"mountPath"`
+
+	// The secret path in Vault where the credentials are stored
+	SecretPath string `json:"secretPath"`
 }
 
 // A ProviderConfigSpec defines the desired state of a ProviderConfig.
 type ProviderConfigSpec struct {
-	// Credentials required to authenticate to this provider.
-	Credentials ProviderCredentials `json:"credentials"`
-
 	// Settings for storing CephUser credentials in vault
-	Vault VaultConfig `json:"vaultSettings""`
+	CredentialsVault VaultConfig `json:"credentialsVault"`
 
 	// The url for your radosgw endpoint.
 	HostName string `json:"hostname"`

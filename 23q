@@ -1,0 +1,39 @@
+# Please edit the object below. Lines beginning with a '#' will be ignored,
+# and an empty file will abort the edit. If an error occurs while saving this file will be
+# reopened with the relevant failures.
+#
+apiVersion: ceph.radosgw.crossplane.io/v1alpha1
+kind: CephUser
+metadata:
+  annotations:
+    crossplane.io/external-create-pending: "2023-09-15T10:52:41+02:00"
+    crossplane.io/external-name: mytestuser-g
+    kubectl.kubernetes.io/last-applied-configuration: |
+      {"apiVersion":"ceph.radosgw.crossplane.io/v1alpha1","kind":"CephUser","metadata":{"annotations":{},"name":"mytestuser-g"},"spec":{"forProvider":{"displayed_name":"My test user g","uid":"testuser-crossplane-g","user_quota_max_buckets":1000,"user_quota_max_objects":1000,"user_quota_max_size_kb":1000000000},"providerConfigRef":{"name":"ceph-admin-cfg"}}}
+  creationTimestamp: "2023-09-15T08:52:41Z"
+  deletionGracePeriodSeconds: 0
+  deletionTimestamp: "2023-11-13T19:39:05Z"
+  generation: 3
+  name: mytestuser-g
+  resourceVersion: "127360524"
+  uid: a22896e6-3df6-48ac-a6f2-5f09bead72d4
+spec:
+  credentialsSecretRef: {}
+  deletionPolicy: Delete
+  forProvider:
+    displayed_name: My test user g
+    uid: testuser-crossplane-g
+    user_quota_max_buckets: 1000
+    user_quota_max_objects: 1000
+    user_quota_max_size_kb: 1000000000
+  managementPolicies:
+  - '*'
+  providerConfigRef:
+    name: ceph-admin-cfg
+status:
+  atProvider: {}
+  conditions:
+  - lastTransitionTime: "2023-09-15T08:52:41Z"
+    reason: ReconcileSuccess
+    status: "True"
+    type: Synced
