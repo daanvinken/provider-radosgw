@@ -59,13 +59,6 @@ const (
 	inUseFinalizer = "cephuser-in-use.ceph.radosgw.crossplane.io"
 )
 
-// A NoOpService does nothing.
-type NoOpService struct{}
-
-var (
-	newNoOpService = func(_ []byte) (interface{}, error) { return &NoOpService{}, nil }
-)
-
 // Setup adds a controller that reconciles CephUser managed resources.
 func Setup(mgr ctrl.Manager, o controller.Options) error {
 	name := managed.ControllerName(v1alpha1.CephUserGroupKind)
@@ -85,7 +78,6 @@ func Setup(mgr ctrl.Manager, o controller.Options) error {
 		managed.WithExternalConnecter(&connector{
 			kube:             mgr.GetClient(),
 			usage:            resource.NewProviderConfigUsageTracker(mgr.GetClient(), &apisv1alpha1.ProviderConfigUsage{}),
-			newServiceFn:     newNoOpService,
 			vaultAdminClient: vaultAdminClient,
 			scheme:           mgr.GetScheme(),
 			log:              o.Logger.WithValues("controller", name)}),
@@ -125,6 +117,9 @@ func (c *connector) Connect(ctx context.Context, mg resource.Managed) (managed.E
 		return nil, errors.New(errNotCephUser)
 	}
 
+	// These fmt statements should be removed in the real implementation.
+	fmt.Printf("Connecting: %+v\n", cr.Name)
+
 	if err := c.usage.Track(ctx, mg); err != nil {
 		return nil, errors.Wrap(err, errTrackPCUsage)
 	}
@@ -155,7 +150,7 @@ func (c *connector) Connect(ctx context.Context, mg resource.Managed) (managed.E
 	if err != nil {
 		return nil, errors.Wrap(err, errNewClient)
 	}
-
+	fmt.Printf("Creating new vault client for '%s'\n", cr.Name)
 	vaultClient, err := credentials.NewVaultClient(pc.Spec.CredentialsVault)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create vault client for storing ceph credentials")
@@ -183,6 +178,9 @@ func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 	if !ok {
 		return managed.ExternalObservation{}, errors.New(errNotCephUser)
 	}
+
+	// These fmt statements should be removed in the real implementation.
+	fmt.Printf("Observing: %+v\n", cr.Name)
 
 	// Create a new context and cancel it when we have either found the user or cannot find it.
 	ctxC, cancel := context.WithCancel(ctx)
@@ -226,6 +224,9 @@ func (c *external) Create(ctx context.Context, mg resource.Managed) (managed.Ext
 	if !ok {
 		return managed.ExternalCreation{}, errors.New(errNotCephUser)
 	}
+
+	// These fmt statements should be removed in the real implementation.
+	fmt.Printf("Creating: %+v\n", cr.Name)
 
 	user := radosgw.GenerateCephUserInput(cr)
 	_, err := c.rgwClient.CreateUser(ctx, *user)
@@ -280,10 +281,13 @@ func (c *external) Create(ctx context.Context, mg resource.Managed) (managed.Ext
 }
 
 func (c *external) Update(ctx context.Context, mg resource.Managed) (managed.ExternalUpdate, error) {
-	_, ok := mg.(*v1alpha1.CephUser)
+	cr, ok := mg.(*v1alpha1.CephUser)
 	if !ok {
 		return managed.ExternalUpdate{}, errors.New(errNotCephUser)
 	}
+
+	// These fmt statements should be removed in the real implementation.
+	fmt.Printf("Updating: %+v\n", cr.Name)
 
 	c.log.Debug("Updating CRD but not implemented.")
 
@@ -299,6 +303,9 @@ func (c *external) Delete(ctx context.Context, mg resource.Managed) error {
 	if !ok {
 		return errors.New(errNotCephUser)
 	}
+
+	// These fmt statements should be removed in the real implementation.
+	fmt.Printf("Deleting: %+v\n", cr.Name)
 
 	// Radosgw also doesn't allow removal if the user has buckets.
 	// TODO Still I think we shouldn't just trust this

@@ -1,12 +1,12 @@
 apiVersion: ceph.radosgw.crossplane.io/v1alpha1
 kind: CephUser
 metadata:
-  name: my-ceph-user2
+  name: my-ceph-user-b
 spec:
   deletionPolicy: Delete
   forProvider:
-    displayedName: john_doe2
-    uid: johndoe1232
+    displayedName: my-ceph-user-b
+    uid: myuser-b
     userQuotaMaxBuckets: 5
     userQuotaMaxObjects: 1000
     userQuotaMaxSizeKB: 204800
