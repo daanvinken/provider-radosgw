@@ -39,6 +39,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"net/http"
+	"os"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -55,6 +56,9 @@ const (
 	errGetCephUser            = "Failed to retrieve cephuser"
 	errCreateCephUser         = "Failed to create cephuser"
 	errDeleteCephUser         = "Failed to delete cephuser"
+	errVaultCleanup           = "Failed to remove credentials from vault"
+	errFetchSecret            = "unable to extract secret data '%s' from vault"
+	errVaultClientCreate      = "failed to create vault client for storing ceph credentials"
 
 	inUseFinalizer = "cephuser-in-use.ceph.radosgw.crossplane.io"
 )
@@ -66,6 +70,10 @@ func Setup(mgr ctrl.Manager, o controller.Options) error {
 	cps := []managed.ConnectionPublisher{managed.NewAPISecretPublisher(mgr.GetClient(), mgr.GetScheme())}
 	if o.Features.Enabled(features.EnableAlphaExternalSecretStores) {
 		cps = append(cps, connection.NewDetailsManager(mgr.GetClient(), apisv1alpha1.StoreConfigGroupVersionKind))
+	}
+
+	if os.Getenv("VAULT_TOKEN") != "" && os.Getenv("VAULT_ADDR") != "" {
+		fmt.Println("Using local dev mode as 'VAULT_TOKEN' and 'VAULT_ADDR' are set.")
 	}
 
 	vaultAdminClient, err := credentials.NewVaultClientForCephAdmins()
@@ -136,12 +144,12 @@ func (c *connector) Connect(ctx context.Context, mg resource.Managed) (managed.E
 
 	secretKey, ok := kvSecret.Data["secret_key"].(string)
 	if !ok {
-		return nil, errors.New("unable to extract secret data 'secret_key'")
+		return nil, errors.New(fmt.Sprintf(errFetchSecret, "secret_key"))
 	}
 
 	accessKey, ok := kvSecret.Data["access_key"].(string)
 	if !ok {
-		return nil, errors.New("unable to extract secret data 'access_key'")
+		return nil, errors.New(fmt.Sprintf(errFetchSecret, "access_key"))
 	}
 
 	httpClient := &http.Client{}
@@ -153,7 +161,7 @@ func (c *connector) Connect(ctx context.Context, mg resource.Managed) (managed.E
 	fmt.Printf("Creating new vault client for '%s'\n", cr.Name)
 	vaultClient, err := credentials.NewVaultClient(pc.Spec.CredentialsVault)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to create vault client for storing ceph credentials")
+		return nil, errors.Wrap(err, errVaultClientCreate)
 	}
 
 	return &external{
@@ -243,7 +251,7 @@ func (c *external) Create(ctx context.Context, mg resource.Managed) (managed.Ext
 
 	pc := &apisv1alpha1.ProviderConfig{}
 	if err := c.kubeClient.Get(ctx, types.NamespacedName{Name: cr.GetProviderConfigReference().Name}, pc); err != nil {
-		return managed.ExternalCreation{}, err
+		return managed.ExternalCreation{}, errors.Wrap(err, errGetPC)
 	}
 
 	secretPath, err := credentials.BuildCephUserSecretPath(*pc, *cr.Spec.ForProvider.UID)
@@ -289,8 +297,6 @@ func (c *external) Update(ctx context.Context, mg resource.Managed) (managed.Ext
 	// These fmt statements should be removed in the real implementation.
 	fmt.Printf("Updating: %+v\n", cr.Name)
 
-	c.log.Debug("Updating CRD but not implemented.")
-
 	return managed.ExternalUpdate{
 		// Optionally return any details that may be required to connect to the
 		// external resource. These will be stored as the connection secret.
@@ -325,6 +331,17 @@ func (c *external) Delete(ctx context.Context, mg resource.Managed) error {
 
 	}
 
+	pc := &apisv1alpha1.ProviderConfig{}
+	if err := c.kubeClient.Get(ctx, types.NamespacedName{Name: cr.GetProviderConfigReference().Name}, pc); err != nil {
+		return errors.Wrap(err, errGetPC)
+	}
+
+	secretPath, err := credentials.BuildCephUserSecretPath(*pc, *cr.Spec.ForProvider.UID)
+	err = credentials.RemoveSecretFromVault(c.vaultClient, pc.Spec.CredentialsVault, &secretPath)
+	if err != nil {
+		c.log.Info("Failed to remove credentials from Vault", "cephUser_uid", cr.Spec.ForProvider.UID, "error", err.Error())
+		return errors.Wrap(err, errVaultCleanup)
+	}
 	return nil
 }
 

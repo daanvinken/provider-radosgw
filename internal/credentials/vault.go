@@ -23,7 +23,6 @@ func NewVaultClient(config v1alpha1.VaultConfig) (*vault.Client, error) {
 	}
 
 	if os.Getenv("VAULT_TOKEN") != "" && os.Getenv("VAULT_ADDR") != "" {
-		fmt.Println("Using local dev mode as 'VAULT_TOKEN' and 'VAULT_ADDR' are set.")
 		err = client.SetAddress(os.Getenv("VAULT_ADDR"))
 		if err != nil {
 			return &vault.Client{}, err
@@ -72,6 +71,23 @@ func WriteSecretsToVault(client *vault.Client, vaultConfig v1alpha1.VaultConfig,
 		}
 	} else {
 		return fmt.Errorf("unsupported KV version: %d", vaultConfig.KVVersion)
+	}
+	return nil
+}
+
+func RemoveSecretFromVault(client *vault.Client, vaultConfig v1alpha1.VaultConfig, key *string) error {
+	if vaultConfig.KVVersion == "1" {
+		err := client.KVv1(vaultConfig.MountPath).Delete(context.TODO(), *key)
+		if err != nil {
+			return errors.Wrapf(err, "failed to delete from vault kv1 at '%s'", vaultConfig.MountPath)
+		}
+	} else if vaultConfig.KVVersion == "2" {
+		err := client.KVv2(vaultConfig.MountPath).Delete(context.TODO(), *key)
+		if err != nil {
+			return errors.Wrapf(err, "failed to delete from vault kv2 at '%s'", vaultConfig.MountPath)
+		}
+	} else {
+		return fmt.Errorf("unsupported KV version: %s", vaultConfig.KVVersion)
 	}
 	return nil
 }
