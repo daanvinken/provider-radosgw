@@ -59,6 +59,8 @@ const (
 	errVaultCleanup           = "Failed to remove credentials from vault"
 	errFetchSecret            = "unable to extract secret data '%s' from vault"
 	errVaultClientCreate      = "failed to create vault client for storing ceph credentials"
+	errListBuckets            = "error listing user's buckets"
+	errUserStillHasBuckets    = "ceph user still owns buckets"
 
 	inUseFinalizer = "cephuser-in-use.ceph.radosgw.crossplane.io"
 )
@@ -313,30 +315,39 @@ func (c *external) Delete(ctx context.Context, mg resource.Managed) error {
 	// These fmt statements should be removed in the real implementation.
 	fmt.Printf("Deleting: %+v\n", cr.Name)
 
-	// Radosgw also doesn't allow removal if the user has buckets.
-	// TODO Still I think we shouldn't just trust this
-	if controllerutil.RemoveFinalizer(cr, inUseFinalizer) {
-		err := c.kubeClient.Update(ctx, cr)
-		if err != nil {
-			c.log.Info("Failed to remove in-use finalizer on cephuser", "cephUser_uid", cr.Spec.ForProvider.UID, "error", err.Error())
-			return errors.Wrap(err, errDeleteCephUser)
-		}
-	}
-
-	user := radosgw.GenerateCephUserInput(cr)
-	err := c.rgwClient.RemoveUser(ctx, *user)
-	if err != nil {
-		c.log.Info("Failed to remove cephUser on radosgw", "cephUser_uid", cr.Spec.ForProvider.UID, "error", err.Error())
-		return errors.Wrap(err, errDeleteCephUser)
-
-	}
-
 	pc := &apisv1alpha1.ProviderConfig{}
 	if err := c.kubeClient.Get(ctx, types.NamespacedName{Name: cr.GetProviderConfigReference().Name}, pc); err != nil {
 		return errors.Wrap(err, errGetPC)
 	}
 
 	secretPath, err := credentials.BuildCephUserSecretPath(*pc, *cr.Spec.ForProvider.UID)
+
+	hasBuckets, err := cephUserHasBuckets(c.rgwClient, cr)
+	if err != nil {
+		c.log.Info("Failed to verify if user still has buckets during deletion", "cephUser_uid", cr.Spec.ForProvider.UID, "error", err.Error())
+		return errors.Wrap(err, errDeleteCephUser)
+	}
+
+	if !hasBuckets {
+		if controllerutil.RemoveFinalizer(cr, inUseFinalizer) {
+			err := c.kubeClient.Update(ctx, cr)
+			if err != nil {
+				c.log.Info("Failed to remove in-use finalizer on cephuser", "cephUser_uid", cr.Spec.ForProvider.UID, "error", err.Error())
+				return errors.Wrap(err, errDeleteCephUser)
+			}
+		}
+	} else {
+		return fmt.Errorf(errUserStillHasBuckets)
+	}
+
+	user := radosgw.GenerateCephUserInput(cr)
+	err = c.rgwClient.RemoveUser(ctx, *user)
+	if err != nil {
+		c.log.Info("Failed to remove cephUser on radosgw", "cephUser_uid", cr.Spec.ForProvider.UID, "error", err.Error())
+		return errors.Wrap(err, errDeleteCephUser)
+
+	}
+
 	err = credentials.RemoveSecretFromVault(c.vaultClient, pc.Spec.CredentialsVault, &secretPath)
 	if err != nil {
 		c.log.Info("Failed to remove credentials from Vault", "cephUser_uid", cr.Spec.ForProvider.UID, "error", err.Error())
@@ -355,4 +366,14 @@ func isAlreadyExists(err error) bool {
 		return true
 	}
 	return false
+}
+
+func cephUserHasBuckets(radosgwClient *radosgw_admin.API, cephUser *v1alpha1.CephUser) (bool, error) {
+	buckets, err := radosgwClient.ListUsersBuckets(context.TODO(), *cephUser.Spec.ForProvider.UID)
+	if err != nil {
+		return false, errors.Wrap(err, errListBuckets)
+	}
+
+	// Check if the user has any buckets
+	return len(buckets) > 0, nil
 }

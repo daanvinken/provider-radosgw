@@ -92,6 +92,32 @@ func RemoveSecretFromVault(client *vault.Client, vaultConfig v1alpha1.VaultConfi
 	return nil
 }
 
+func ReadSecretsFromVault(client *vault.Client, vaultConfig v1alpha1.VaultConfig, key *string) (map[string]interface{}, error) {
+	var secretData map[string]interface{}
+
+	if vaultConfig.KVVersion == "1" {
+		data, err := client.KVv1(vaultConfig.MountPath).Get(context.TODO(), *key)
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to read from vault kv1 at '%s'", vaultConfig.MountPath)
+		}
+		if data != nil {
+			secretData = data.Data
+		}
+	} else if vaultConfig.KVVersion == "2" {
+		data, err := client.KVv2(vaultConfig.MountPath).Get(context.TODO(), *key)
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to read from vault kv2 at '%s'", vaultConfig.MountPath)
+		}
+		if data != nil && data.Data != nil {
+			secretData = data.Data["data"].(map[string]interface{})
+		}
+	} else {
+		return nil, fmt.Errorf("unsupported KV version: %s", vaultConfig.KVVersion)
+	}
+
+	return secretData, nil
+}
+
 func BuildCephUserSecretPath(pc v1alpha1.ProviderConfig, cephUserUID string) (string, error) {
 	prefix := "ceph-"
 	if !strings.HasPrefix(pc.Name, prefix) {
