@@ -134,7 +134,7 @@ func (c *connector) Connect(ctx context.Context, mg resource.Managed) (managed.E
 		return nil, errors.Wrap(err, errGetPC)
 	}
 
-	kvSecret, err := c.vaultAdminClient.KVv1("k8s-cl03").Get(context.Background(), "crossplane/ceph/admin-credentials")
+	kvSecret, err := c.vaultAdminClient.KVv1("k8s-cl03").Get(context.Background(), "crossplane/ceph/admin-credentials/"+pc.Name)
 	if err != nil {
 		return nil, errors.Wrap(err, errGetCreds)
 	}
@@ -183,9 +183,6 @@ func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 	if !ok {
 		return managed.ExternalObservation{}, errors.New(errNotCephUser)
 	}
-
-	// TODO verify the configured backend? Or should we do a seperate healthcheck ?
-	fmt.Printf("Observing: %+v\n", cr.GetName())
 
 	// Create a new context and cancel it when we have either found the user or cannot find it.
 	ctxC, cancel := context.WithCancel(ctx)

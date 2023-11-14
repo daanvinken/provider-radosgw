@@ -8,6 +8,7 @@ require (
 	github.com/crossplane/crossplane-tools v0.0.0-20230714144037-2684f4bc7638
 	github.com/google/go-cmp v0.5.9
 	github.com/hashicorp/vault/api v1.10.0
+	github.com/hashicorp/vault/api/auth/kubernetes v0.5.0
 	github.com/pkg/errors v0.9.1
 	gopkg.in/alecthomas/kingpin.v2 v2.2.6
 	k8s.io/api v0.28.0
