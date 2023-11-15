@@ -10,19 +10,10 @@ import (
 )
 
 func GenerateCephUserInput(cephUser *v1alpha1.CephUser) *radosgw_admin.User {
-	//quotaEnable := true
-	//userQuotaSpec := radosgw_admin.QuotaSpec{
-	//	QuotaType:  "user",
-	//	UID:        *cephUser.Spec.ForProvider.UID,
-	//	MaxSizeKb:  cephUser.Spec.ForProvider.UserQuotaMaxSizeKB,
-	//	MaxObjects: cephUser.Spec.ForProvider.UserQuotaMaxObjects,
-	//	Enabled:    &quotaEnable,
-	//}
 
 	createCephUserInput := &radosgw_admin.User{
-		ID: *cephUser.Spec.ForProvider.UID,
-		//MaxBuckets:  cephUser.Spec.ForProvider.UserQuotaMaxBuckets,
-		//UserQuota:   userQuotaSpec,
+		ID:          *cephUser.Spec.ForProvider.UID,
+		MaxBuckets:  cephUser.Spec.ForProvider.UserQuotaMaxBuckets,
 		DisplayName: *cephUser.Spec.ForProvider.DisplayedName,
 		Keys: []radosgw_admin.UserKeySpec{
 			{
@@ -30,10 +21,21 @@ func GenerateCephUserInput(cephUser *v1alpha1.CephUser) *radosgw_admin.User {
 				SecretKey: credentials.GenerateRandomSecret(26),
 			},
 		},
-		// TODO fill all parameters and generate secrets
 	}
 
 	return createCephUserInput
+}
+
+func GenerateCephUserQuotaInput(cephUser *v1alpha1.CephUser) *radosgw_admin.QuotaSpec {
+	quotaEnable := true
+	userQuotaSpec := &radosgw_admin.QuotaSpec{
+		QuotaType:  "user",
+		UID:        *cephUser.Spec.ForProvider.UID,
+		MaxSizeKb:  cephUser.Spec.ForProvider.UserQuotaMaxSizeKB,
+		MaxObjects: cephUser.Spec.ForProvider.UserQuotaMaxObjects,
+		Enabled:    &quotaEnable,
+	}
+	return userQuotaSpec
 }
 
 func CephUserExists(ctx context.Context, radosgwclient *radosgw_admin.API, UID string) (bool, error) {

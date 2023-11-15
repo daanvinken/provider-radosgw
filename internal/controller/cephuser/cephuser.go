@@ -30,7 +30,7 @@ import (
 	"github.com/crossplane/crossplane-runtime/pkg/resource"
 	"github.com/daanvinken/provider-radosgw/apis/ceph/v1alpha1"
 	apisv1alpha1 "github.com/daanvinken/provider-radosgw/apis/v1alpha1"
-	"github.com/daanvinken/provider-radosgw/internal/credentials"
+	vault2 "github.com/daanvinken/provider-radosgw/internal/credentials/vault"
 	"github.com/daanvinken/provider-radosgw/internal/features"
 	"github.com/daanvinken/provider-radosgw/internal/radosgw"
 	vault "github.com/hashicorp/vault/api"
@@ -78,7 +78,7 @@ func Setup(mgr ctrl.Manager, o controller.Options) error {
 		fmt.Println("Using local dev mode as 'VAULT_TOKEN' and 'VAULT_ADDR' are set.")
 	}
 
-	vaultAdminClient, err := credentials.NewVaultClientForCephAdmins()
+	vaultAdminClient, err := vault2.NewVaultClientForCephAdmins()
 	if err != nil {
 		panic(errors.Wrap(err, errCreateAdminVaultClient))
 	}
@@ -160,8 +160,8 @@ func (c *connector) Connect(ctx context.Context, mg resource.Managed) (managed.E
 	if err != nil {
 		return nil, errors.Wrap(err, errNewClient)
 	}
-	fmt.Printf("Creating new vault client for '%s'\n", cr.Name)
-	vaultClient, err := credentials.NewVaultClient(pc.Spec.CredentialsVault)
+
+	vaultClient, err := vault2.NewVaultClient(pc.Spec.CredentialsVault)
 	if err != nil {
 		return nil, errors.Wrap(err, errVaultClientCreate)
 	}
@@ -246,6 +246,13 @@ func (c *external) Create(ctx context.Context, mg resource.Managed) (managed.Ext
 
 	}
 
+	quota := radosgw.GenerateCephUserQuotaInput(cr)
+
+	err = c.rgwClient.SetUserQuota(ctx, *quota)
+	if err != nil {
+		return managed.ExternalCreation{}, errors.Wrap(err, "failed to set userquota during creation")
+	}
+
 	credentialsData := map[string]interface{}{
 		"access_key": user.Keys[0].AccessKey,
 		"secret_key": user.Keys[0].SecretKey,
@@ -256,14 +263,14 @@ func (c *external) Create(ctx context.Context, mg resource.Managed) (managed.Ext
 		return managed.ExternalCreation{}, errors.Wrap(err, errGetPC)
 	}
 
-	secretPath, err := credentials.BuildCephUserSecretPath(*pc, *cr.Spec.ForProvider.UID)
+	secretPath, err := vault2.BuildCephUserSecretPath(*pc, *cr.Spec.ForProvider.UID)
 
 	if err != nil {
 		c.log.Info(fmt.Sprintf("Failed to build secret path for storing CephUser credentials: '%v+'", err))
 		return managed.ExternalCreation{}, err
 	}
 
-	err = credentials.WriteSecretsToVault(c.vaultClient, pc.Spec.CredentialsVault, &secretPath, &credentialsData)
+	err = vault2.WriteSecretsToVault(c.vaultClient, pc.Spec.CredentialsVault, &secretPath, &credentialsData)
 	if err != nil {
 		//TODO remove user from radosgw again to fix state. Actually use defer with context.
 		return managed.ExternalCreation{}, err
@@ -274,17 +281,17 @@ func (c *external) Create(ctx context.Context, mg resource.Managed) (managed.Ext
 		return managed.ExternalCreation{}, err
 	}
 
-	cr.Status.SetConditions(xpv1.Available())
-
-	if err := c.kubeClient.Status().Update(ctx, cr); err != nil {
-		c.log.Info("Failed to update cephUser", "backend name", "cephUser_uid", cr.Spec.ForProvider.UID)
-	}
-
 	if controllerutil.AddFinalizer(cr, inUseFinalizer) {
 		err := c.kubeClient.Update(ctx, cr)
 		if err != nil {
 			return managed.ExternalCreation{}, err
 		}
+	}
+
+	cr.Status.SetConditions(xpv1.Available())
+
+	if err := c.kubeClient.Status().Update(ctx, cr); err != nil {
+		c.log.Info("Failed to update cephUser", "backend name", "cephUser_uid", cr.Spec.ForProvider.UID)
 	}
 
 	return managed.ExternalCreation{}, nil
@@ -320,7 +327,7 @@ func (c *external) Delete(ctx context.Context, mg resource.Managed) error {
 		return errors.Wrap(err, errGetPC)
 	}
 
-	secretPath, err := credentials.BuildCephUserSecretPath(*pc, *cr.Spec.ForProvider.UID)
+	secretPath, err := vault2.BuildCephUserSecretPath(*pc, *cr.Spec.ForProvider.UID)
 
 	hasBuckets, err := cephUserHasBuckets(c.rgwClient, cr)
 	if err != nil {
@@ -348,7 +355,7 @@ func (c *external) Delete(ctx context.Context, mg resource.Managed) error {
 
 	}
 
-	err = credentials.RemoveSecretFromVault(c.vaultClient, pc.Spec.CredentialsVault, &secretPath)
+	err = vault2.RemoveSecretFromVault(c.vaultClient, pc.Spec.CredentialsVault, &secretPath)
 	if err != nil {
 		c.log.Info("Failed to remove credentials from Vault", "cephUser_uid", cr.Spec.ForProvider.UID, "error", err.Error())
 		return errors.Wrap(err, errVaultCleanup)
