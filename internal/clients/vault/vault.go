@@ -3,7 +3,8 @@ package vault
 import (
 	"context"
 	"fmt"
-	"github.com/daanvinken/provider-radosgw/apis/v1alpha1"
+	"github.com/daanvinken/provider-radosgw/apis/ceph/v1alpha1"
+	v1alpha12 "github.com/daanvinken/provider-radosgw/apis/v1alpha1"
 	"github.com/daanvinken/provider-radosgw/internal/utils"
 	vault "github.com/hashicorp/vault/api"
 	k8s_auth "github.com/hashicorp/vault/api/auth/kubernetes"
@@ -126,12 +127,12 @@ func ReadSecretsFromVault(client *vault.Client, vaultConfig v1alpha1.VaultConfig
 	return secretData, nil
 }
 
-func BuildCephUserSecretPath(pc v1alpha1.ProviderConfig, cephUserUID string) (string, error) {
+func BuildCephUserSecretPath(pc v1alpha12.ProviderConfig, cr *v1alpha1.CephUser) (string, error) {
 	prefix := "ceph-"
 	if !strings.HasPrefix(pc.Name, prefix) {
 		return "", errors.New("provider config name does not start with 'ceph-'")
 	}
 	cephClusterName := pc.Name[len(prefix):]
-	secretPath := pc.Spec.CredentialsVault.SecretPath + "/" + cephClusterName + "/users/" + cephUserUID
+	secretPath := cr.Spec.ForProvider.VaultCredentialsStore.SecretPath + "/" + cephClusterName + "/users/" + *cr.Spec.ForProvider.UID
 	return secretPath, nil
 }

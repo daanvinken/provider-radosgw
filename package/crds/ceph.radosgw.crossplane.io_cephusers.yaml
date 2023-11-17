@@ -83,12 +83,47 @@ spec:
                   userQuotaMaxSizeKB:
                     description: The maximum storage size (total) in MB
                     type: integer
+                  vaultCredentialsStore:
+                    description: Config for storing the created user its credentials
+                      in vault
+                    properties:
+                      Name:
+                        description: The vault human readable name
+                        type: string
+                      address:
+                        description: The address of the Vault server (e.g., "https://vault.example.com:8200")
+                        type: string
+                      kvVersion:
+                        description: The version of the Vault KV store to use ("1"
+                          or "2")
+                        type: string
+                      mountPath:
+                        description: The mount path in Vault where the secrets engine
+                          is
+                        type: string
+                      secretPath:
+                        description: The secret path in Vault where the credentials
+                          are stored
+                        type: string
+                      serviceAccountName:
+                        description: The name of the Kubernetes service account authorized
+                          to access Vault
+                        type: string
+                    required:
+                    - Name
+                    - address
+                    - kvVersion
+                    - mountPath
+                    - secretPath
+                    - serviceAccountName
+                    type: object
                 required:
                 - displayedName
                 - uid
                 - userQuotaMaxBuckets
                 - userQuotaMaxObjects
                 - userQuotaMaxSizeKB
+                - vaultCredentialsStore
                 type: object
               managementPolicies:
                 default:

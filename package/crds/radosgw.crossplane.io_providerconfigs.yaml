@@ -42,47 +42,15 @@ spec:
           spec:
             description: A ProviderConfigSpec defines the desired state of a ProviderConfig.
             properties:
-              credentialsVault:
-                description: Settings for storing CephUser credentials in vault
-                properties:
-                  Name:
-                    description: The vault human readable name
-                    type: string
-                  address:
-                    description: The address of the Vault server (e.g., "https://vault.example.com:8200")
-                    type: string
-                  kvVersion:
-                    description: The version of the Vault KV store to use ("1" or
-                      "2")
-                    type: string
-                  mountPath:
-                    description: The mount path in Vault where the secrets engine
-                      is
-                    type: string
-                  secretPath:
-                    description: The secret path in Vault where the credentials are
-                      stored
-                    type: string
-                  serviceAccountName:
-                    description: The name of the Kubernetes service account authorized
-                      to access Vault
-                    type: string
-                required:
-                - Name
-                - address
-                - kvVersion
-                - mountPath
-                - secretPath
-                - serviceAccountName
-                type: object
               hostname:
-                description: The url for your radosgw endpoint.
+                description: The URL for your radosgw endpoint.
                 type: string
-              useHttps:
-                description: UseHTTPS radosgw cluster configuration.
-                type: boolean
+              tags:
+                additionalProperties:
+                  type: string
+                description: Map of tags associated with the provider config.
+                type: object
             required:
-            - credentialsVault
             - hostname
             type: object
           status:

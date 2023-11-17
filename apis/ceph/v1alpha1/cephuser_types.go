@@ -41,6 +41,29 @@ type CephUserParameters struct {
 
 	// The number of objects for this user
 	UserQuotaMaxObjects *int64 `json:"userQuotaMaxObjects"`
+
+	// Config for storing the created user its credentials in vault
+	VaultCredentialsStore *VaultConfig `json:"vaultCredentialsStore"`
+}
+
+type VaultConfig struct {
+	// The version of the Vault KV store to use ("1" or "2")
+	KVVersion string `json:"kvVersion"`
+
+	// The address of the Vault server (e.g., "https://vault.example.com:8200")
+	Address string `json:"address"`
+
+	// The vault human readable name
+	Name string `json:"Name"`
+
+	// The name of the Kubernetes service account authorized to access Vault
+	ServiceAccountName string `json:"serviceAccountName"`
+
+	// The mount path in Vault where the secrets engine is
+	MountPath string `json:"mountPath"`
+
+	// The secret path in Vault where the credentials are stored
+	SecretPath string `json:"secretPath"`
 }
 
 // CephUserObservation are the observable fields of a CephUser.

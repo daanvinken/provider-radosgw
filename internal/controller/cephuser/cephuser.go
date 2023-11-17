@@ -29,7 +29,6 @@ import (
 	"github.com/crossplane/crossplane-runtime/pkg/resource"
 	"github.com/daanvinken/provider-radosgw/apis/ceph/v1alpha1"
 	apisv1alpha1 "github.com/daanvinken/provider-radosgw/apis/v1alpha1"
-	pc_v1alpha1 "github.com/daanvinken/provider-radosgw/apis/v1alpha1"
 	"github.com/daanvinken/provider-radosgw/internal/clients/radosgw"
 	"github.com/daanvinken/provider-radosgw/internal/clients/vault"
 	vault_sdk "github.com/hashicorp/vault/api"
@@ -104,7 +103,7 @@ type connector struct {
 	kube               client.Client
 	usage              resource.Tracker
 	newRadosgwClientFn func(host string, credentials radosgw.Credentials) *radosgw_admin.API
-	newVaultClientFn   func(config pc_v1alpha1.VaultConfig) *vault_sdk.Client
+	newVaultClientFn   func(config v1alpha1.VaultConfig) *vault_sdk.Client
 	log                logging.Logger
 	vaultAdminClient   *vault_sdk.Client
 }
@@ -139,7 +138,7 @@ func (c *connector) Connect(ctx context.Context, mg resource.Managed) (managed.E
 
 	return &external{
 		rgwClient:   c.newRadosgwClientFn(pc.Spec.HostName, radosgwCredentials),
-		vaultClient: c.newVaultClientFn(pc.Spec.CredentialsVault),
+		vaultClient: c.newVaultClientFn(*cr.Spec.ForProvider.VaultCredentialsStore),
 		kubeClient:  c.kube,
 		log:         c.log,
 	}, err
@@ -233,14 +232,14 @@ func (c *external) Create(ctx context.Context, mg resource.Managed) (managed.Ext
 		return managed.ExternalCreation{}, errors.Wrap(err, errGetPC)
 	}
 
-	secretPath, err := vault.BuildCephUserSecretPath(*pc, *cr.Spec.ForProvider.UID)
+	secretPath, err := vault.BuildCephUserSecretPath(*pc, cr)
 
 	if err != nil {
 		c.log.Info(fmt.Sprintf("Failed to build secret path for storing CephUser credentials: '%v+'", err))
 		return managed.ExternalCreation{}, err
 	}
 
-	err = vault.WriteSecretsToVault(c.vaultClient, pc.Spec.CredentialsVault, &secretPath, &credentialsData)
+	err = vault.WriteSecretsToVault(c.vaultClient, *cr.Spec.ForProvider.VaultCredentialsStore, &secretPath, &credentialsData)
 	if err != nil {
 		//TODO remove user from radosgw again to fix state. Actually use defer with context.
 		return managed.ExternalCreation{}, err
@@ -287,12 +286,13 @@ func (c *external) Delete(ctx context.Context, mg resource.Managed) error {
 	// These fmt statements should be removed in the real implementation.
 	fmt.Printf("Deleting: %+v\n", cr.Name)
 
+	//TODO can't we just add the clustername to context or connector
 	pc := &apisv1alpha1.ProviderConfig{}
 	if err := c.kubeClient.Get(ctx, types.NamespacedName{Name: cr.GetProviderConfigReference().Name}, pc); err != nil {
 		return errors.Wrap(err, errGetPC)
 	}
 
-	secretPath, err := vault.BuildCephUserSecretPath(*pc, *cr.Spec.ForProvider.UID)
+	secretPath, err := vault.BuildCephUserSecretPath(*pc, cr)
 
 	hasBuckets, err := cephUserHasBuckets(c.rgwClient, cr)
 	if err != nil {
@@ -320,7 +320,7 @@ func (c *external) Delete(ctx context.Context, mg resource.Managed) error {
 
 	}
 
-	err = vault.RemoveSecretFromVault(c.vaultClient, pc.Spec.CredentialsVault, &secretPath)
+	err = vault.RemoveSecretFromVault(c.vaultClient, *cr.Spec.ForProvider.VaultCredentialsStore, &secretPath)
 	if err != nil {
 		c.log.Info("Failed to remove credentials from Vault", "cephUser_uid", cr.Spec.ForProvider.UID, "error", err.Error())
 		return errors.Wrap(err, errVaultCleanup)
