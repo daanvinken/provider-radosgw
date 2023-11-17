@@ -22,7 +22,6 @@ import (
 	"github.com/crossplane/crossplane-runtime/pkg/ratelimiter"
 	"github.com/crossplane/crossplane-runtime/pkg/reconciler/providerconfig"
 	"github.com/crossplane/crossplane-runtime/pkg/resource"
-	v1 "k8s.io/api/core/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
 
 	"github.com/daanvinken/provider-radosgw/apis/v1alpha1"
@@ -43,7 +42,6 @@ func Setup(mgr ctrl.Manager, o controller.Options) error {
 		providerconfig.WithRecorder(event.NewAPIRecorder(mgr.GetEventRecorderFor(name))))
 
 	return ctrl.NewControllerManagedBy(mgr).
-		Owns(&v1.Secret{}).
 		Named(name).
 		WithOptions(o.ForControllerRuntime()).
 		For(&v1alpha1.ProviderConfig{}).

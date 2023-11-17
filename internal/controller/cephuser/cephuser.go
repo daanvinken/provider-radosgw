@@ -36,7 +36,6 @@ import (
 	vault "github.com/hashicorp/vault/api"
 	"github.com/pkg/errors"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"net/http"
 	"os"
@@ -89,7 +88,6 @@ func Setup(mgr ctrl.Manager, o controller.Options) error {
 			kube:             mgr.GetClient(),
 			usage:            resource.NewProviderConfigUsageTracker(mgr.GetClient(), &apisv1alpha1.ProviderConfigUsage{}),
 			vaultAdminClient: vaultAdminClient,
-			scheme:           mgr.GetScheme(),
 			log:              o.Logger.WithValues("controller", name)}),
 		managed.WithLogger(o.Logger.WithValues("controller", name)),
 		managed.WithPollInterval(o.PollInterval),
@@ -112,7 +110,6 @@ type connector struct {
 	usage            resource.Tracker
 	newServiceFn     func(creds []byte) (interface{}, error)
 	log              logging.Logger
-	scheme           *runtime.Scheme
 	vaultAdminClient *vault.Client
 }
 
