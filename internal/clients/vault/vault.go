@@ -58,6 +58,14 @@ func NewVaultClientForCephAdmins() (*vault.Client, error) {
 	return NewVaultClient(vaultConfig)
 }
 
+func NewVaultClientWithPanic(config v1alpha1.VaultConfig) *vault.Client {
+	client, err := NewVaultClient(config)
+	if err != nil {
+		panic(err)
+	}
+	return client
+}
+
 func WriteSecretsToVault(client *vault.Client, vaultConfig v1alpha1.VaultConfig, key *string, data *map[string]interface{}) error {
 	if vaultConfig.KVVersion == "1" {
 		err := client.KVv1(vaultConfig.MountPath).Put(context.TODO(), *key, *data)

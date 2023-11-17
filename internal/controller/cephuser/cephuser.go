@@ -29,8 +29,9 @@ import (
 	"github.com/crossplane/crossplane-runtime/pkg/resource"
 	"github.com/daanvinken/provider-radosgw/apis/ceph/v1alpha1"
 	apisv1alpha1 "github.com/daanvinken/provider-radosgw/apis/v1alpha1"
+	pc_v1alpha1 "github.com/daanvinken/provider-radosgw/apis/v1alpha1"
 	"github.com/daanvinken/provider-radosgw/internal/clients/radosgw"
-	vault "github.com/daanvinken/provider-radosgw/internal/clients/vault"
+	"github.com/daanvinken/provider-radosgw/internal/clients/vault"
 	vault_sdk "github.com/hashicorp/vault/api"
 	"github.com/pkg/errors"
 	"k8s.io/apimachinery/pkg/types"
@@ -81,6 +82,7 @@ func Setup(mgr ctrl.Manager, o controller.Options) error {
 			kube:               mgr.GetClient(),
 			usage:              resource.NewProviderConfigUsageTracker(mgr.GetClient(), &apisv1alpha1.ProviderConfigUsage{}),
 			newRadosgwClientFn: radosgw.NewRadosgwClient,
+			newVaultClientFn:   vault.NewVaultClientWithPanic,
 			vaultAdminClient:   vaultAdminClient,
 			log:                o.Logger.WithValues("controller", name)}),
 		managed.WithLogger(o.Logger.WithValues("controller", name)),
@@ -102,9 +104,9 @@ type connector struct {
 	kube               client.Client
 	usage              resource.Tracker
 	newRadosgwClientFn func(host string, credentials radosgw.Credentials) *radosgw_admin.API
-	//newVaultClient func(host string, credentials radosgw.Credentials) *radosgw_admin.API
-	log              logging.Logger
-	vaultAdminClient *vault_sdk.Client
+	newVaultClientFn   func(config pc_v1alpha1.VaultConfig) *vault_sdk.Client
+	log                logging.Logger
+	vaultAdminClient   *vault_sdk.Client
 }
 
 // Connect typically produces an ExternalClient by:
@@ -130,11 +132,6 @@ func (c *connector) Connect(ctx context.Context, mg resource.Managed) (managed.E
 		return nil, errors.Wrap(err, errGetPC)
 	}
 
-	vaultClient, err := vault.NewVaultClient(pc.Spec.CredentialsVault)
-	if err != nil {
-		return nil, errors.Wrap(err, errVaultClientCreate)
-	}
-
 	radosgwCredentials, err := GetAdminCredentials(c.vaultAdminClient, pc)
 	if err != nil {
 		return nil, errors.Wrap(err, errFetchSecretAdmin)
@@ -144,7 +141,7 @@ func (c *connector) Connect(ctx context.Context, mg resource.Managed) (managed.E
 		rgwClient:   c.newRadosgwClientFn(pc.Spec.HostName, radosgwCredentials),
 		kubeClient:  c.kube,
 		log:         c.log,
-		vaultClient: vaultClient,
+		vaultClient: c.newVaultClientFn(pc.Spec.CredentialsVault),
 	}, err
 }
 
