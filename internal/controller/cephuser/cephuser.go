@@ -21,7 +21,6 @@ import (
 	"fmt"
 	radosgw_admin "github.com/ceph/go-ceph/rgw/admin"
 	xpv1 "github.com/crossplane/crossplane-runtime/apis/common/v1"
-	"github.com/crossplane/crossplane-runtime/pkg/connection"
 	"github.com/crossplane/crossplane-runtime/pkg/controller"
 	"github.com/crossplane/crossplane-runtime/pkg/event"
 	"github.com/crossplane/crossplane-runtime/pkg/logging"
@@ -30,14 +29,11 @@ import (
 	"github.com/crossplane/crossplane-runtime/pkg/resource"
 	"github.com/daanvinken/provider-radosgw/apis/ceph/v1alpha1"
 	apisv1alpha1 "github.com/daanvinken/provider-radosgw/apis/v1alpha1"
-	vault2 "github.com/daanvinken/provider-radosgw/internal/credentials/vault"
-	"github.com/daanvinken/provider-radosgw/internal/features"
-	"github.com/daanvinken/provider-radosgw/internal/radosgw"
-	vault "github.com/hashicorp/vault/api"
+	"github.com/daanvinken/provider-radosgw/internal/clients/radosgw"
+	vault "github.com/daanvinken/provider-radosgw/internal/clients/vault"
+	vault_sdk "github.com/hashicorp/vault/api"
 	"github.com/pkg/errors"
-	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"net/http"
 	"os"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -55,9 +51,9 @@ const (
 	errGetCephUser            = "Failed to retrieve cephuser"
 	errCreateCephUser         = "Failed to create cephuser"
 	errDeleteCephUser         = "Failed to delete cephuser"
-	errVaultCleanup           = "Failed to remove credentials from vault"
-	errFetchSecret            = "unable to extract secret data '%s' from vault"
-	errVaultClientCreate      = "failed to create vault client for storing ceph credentials"
+	errVaultCleanup           = "Failed to remove credentials from vault_sdk"
+	errFetchSecretAdmin       = "unable to extract secret data for radosgw admin"
+	errVaultClientCreate      = "failed to create vault_sdk client for storing ceph credentials"
 	errListBuckets            = "error listing user's buckets"
 	errUserStillHasBuckets    = "ceph user still owns buckets"
 
@@ -69,15 +65,12 @@ func Setup(mgr ctrl.Manager, o controller.Options) error {
 	name := managed.ControllerName(v1alpha1.CephUserGroupKind)
 
 	cps := []managed.ConnectionPublisher{managed.NewAPISecretPublisher(mgr.GetClient(), mgr.GetScheme())}
-	if o.Features.Enabled(features.EnableAlphaExternalSecretStores) {
-		cps = append(cps, connection.NewDetailsManager(mgr.GetClient(), apisv1alpha1.StoreConfigGroupVersionKind))
-	}
 
 	if os.Getenv("VAULT_TOKEN") != "" && os.Getenv("VAULT_ADDR") != "" {
 		fmt.Println("Using local dev mode as 'VAULT_TOKEN' and 'VAULT_ADDR' are set.")
 	}
 
-	vaultAdminClient, err := vault2.NewVaultClientForCephAdmins()
+	vaultAdminClient, err := vault.NewVaultClientForCephAdmins()
 	if err != nil {
 		panic(errors.Wrap(err, errCreateAdminVaultClient))
 	}
@@ -85,10 +78,11 @@ func Setup(mgr ctrl.Manager, o controller.Options) error {
 	r := managed.NewReconciler(mgr,
 		resource.ManagedKind(v1alpha1.CephUserGroupVersionKind),
 		managed.WithExternalConnecter(&connector{
-			kube:             mgr.GetClient(),
-			usage:            resource.NewProviderConfigUsageTracker(mgr.GetClient(), &apisv1alpha1.ProviderConfigUsage{}),
-			vaultAdminClient: vaultAdminClient,
-			log:              o.Logger.WithValues("controller", name)}),
+			kube:               mgr.GetClient(),
+			usage:              resource.NewProviderConfigUsageTracker(mgr.GetClient(), &apisv1alpha1.ProviderConfigUsage{}),
+			newRadosgwClientFn: radosgw.NewRadosgwClient,
+			vaultAdminClient:   vaultAdminClient,
+			log:                o.Logger.WithValues("controller", name)}),
 		managed.WithLogger(o.Logger.WithValues("controller", name)),
 		managed.WithPollInterval(o.PollInterval),
 		managed.WithRecorder(event.NewAPIRecorder(mgr.GetEventRecorderFor(name))),
@@ -96,7 +90,6 @@ func Setup(mgr ctrl.Manager, o controller.Options) error {
 
 	return ctrl.NewControllerManagedBy(mgr).
 		Named(name).
-		Owns(&corev1.Secret{}).
 		WithOptions(o.ForControllerRuntime()).
 		WithEventFilter(resource.DesiredStateChanged()).
 		For(&v1alpha1.CephUser{}).
@@ -106,11 +99,12 @@ func Setup(mgr ctrl.Manager, o controller.Options) error {
 // A connector is expected to produce an ExternalClient when its Connect method
 // is called.
 type connector struct {
-	kube             client.Client
-	usage            resource.Tracker
-	newServiceFn     func(creds []byte) (interface{}, error)
+	kube               client.Client
+	usage              resource.Tracker
+	newRadosgwClientFn func(host string, credentials radosgw.Credentials) *radosgw_admin.API
+	//newVaultClient func(host string, credentials radosgw.Credentials) *radosgw_admin.API
 	log              logging.Logger
-	vaultAdminClient *vault.Client
+	vaultAdminClient *vault_sdk.Client
 }
 
 // Connect typically produces an ExternalClient by:
@@ -136,35 +130,18 @@ func (c *connector) Connect(ctx context.Context, mg resource.Managed) (managed.E
 		return nil, errors.Wrap(err, errGetPC)
 	}
 
-	kvSecret, err := c.vaultAdminClient.KVv1("k8s-cl03").Get(context.Background(), "crossplane/ceph/admin-credentials/"+pc.Name)
-	if err != nil {
-		return nil, errors.Wrap(err, errGetCreds)
-	}
-
-	secretKey, ok := kvSecret.Data["secret_key"].(string)
-	if !ok {
-		return nil, errors.New(fmt.Sprintf(errFetchSecret, "secret_key"))
-	}
-
-	accessKey, ok := kvSecret.Data["access_key"].(string)
-	if !ok {
-		return nil, errors.New(fmt.Sprintf(errFetchSecret, "access_key"))
-	}
-
-	httpClient := &http.Client{}
-	rgwClient, err := radosgw_admin.New(pc.Spec.HostName, accessKey, secretKey, httpClient)
-
-	if err != nil {
-		return nil, errors.Wrap(err, errNewClient)
-	}
-
-	vaultClient, err := vault2.NewVaultClient(pc.Spec.CredentialsVault)
+	vaultClient, err := vault.NewVaultClient(pc.Spec.CredentialsVault)
 	if err != nil {
 		return nil, errors.Wrap(err, errVaultClientCreate)
 	}
 
+	radosgwCredentials, err := GetAdminCredentials(c.vaultAdminClient, pc)
+	if err != nil {
+		return nil, errors.Wrap(err, errFetchSecretAdmin)
+	}
+
 	return &external{
-		rgwClient:   rgwClient,
+		rgwClient:   c.newRadosgwClientFn(pc.Spec.HostName, radosgwCredentials),
 		kubeClient:  c.kube,
 		log:         c.log,
 		vaultClient: vaultClient,
@@ -176,7 +153,7 @@ func (c *connector) Connect(ctx context.Context, mg resource.Managed) (managed.E
 type external struct {
 	kubeClient  client.Client
 	rgwClient   *radosgw_admin.API
-	vaultClient *vault.Client
+	vaultClient *vault_sdk.Client
 	log         logging.Logger
 }
 
@@ -260,14 +237,14 @@ func (c *external) Create(ctx context.Context, mg resource.Managed) (managed.Ext
 		return managed.ExternalCreation{}, errors.Wrap(err, errGetPC)
 	}
 
-	secretPath, err := vault2.BuildCephUserSecretPath(*pc, *cr.Spec.ForProvider.UID)
+	secretPath, err := vault.BuildCephUserSecretPath(*pc, *cr.Spec.ForProvider.UID)
 
 	if err != nil {
 		c.log.Info(fmt.Sprintf("Failed to build secret path for storing CephUser credentials: '%v+'", err))
 		return managed.ExternalCreation{}, err
 	}
 
-	err = vault2.WriteSecretsToVault(c.vaultClient, pc.Spec.CredentialsVault, &secretPath, &credentialsData)
+	err = vault.WriteSecretsToVault(c.vaultClient, pc.Spec.CredentialsVault, &secretPath, &credentialsData)
 	if err != nil {
 		//TODO remove user from radosgw again to fix state. Actually use defer with context.
 		return managed.ExternalCreation{}, err
@@ -324,7 +301,7 @@ func (c *external) Delete(ctx context.Context, mg resource.Managed) error {
 		return errors.Wrap(err, errGetPC)
 	}
 
-	secretPath, err := vault2.BuildCephUserSecretPath(*pc, *cr.Spec.ForProvider.UID)
+	secretPath, err := vault.BuildCephUserSecretPath(*pc, *cr.Spec.ForProvider.UID)
 
 	hasBuckets, err := cephUserHasBuckets(c.rgwClient, cr)
 	if err != nil {
@@ -352,7 +329,7 @@ func (c *external) Delete(ctx context.Context, mg resource.Managed) error {
 
 	}
 
-	err = vault2.RemoveSecretFromVault(c.vaultClient, pc.Spec.CredentialsVault, &secretPath)
+	err = vault.RemoveSecretFromVault(c.vaultClient, pc.Spec.CredentialsVault, &secretPath)
 	if err != nil {
 		c.log.Info("Failed to remove credentials from Vault", "cephUser_uid", cr.Spec.ForProvider.UID, "error", err.Error())
 		return errors.Wrap(err, errVaultCleanup)
@@ -380,4 +357,27 @@ func cephUserHasBuckets(radosgwClient *radosgw_admin.API, cephUser *v1alpha1.Cep
 
 	// Check if the user has any buckets
 	return len(buckets) > 0, nil
+}
+
+func GetAdminCredentials(vaultAdminClient *vault_sdk.Client, pc *apisv1alpha1.ProviderConfig) (radosgw.Credentials, error) {
+	kvSecret, err := vaultAdminClient.KVv1("k8s-cl03").Get(context.Background(), "crossplane/ceph/admin-credentials/"+pc.Name)
+	if err != nil {
+		return radosgw.Credentials{}, err
+	}
+
+	secretKey, ok := kvSecret.Data["secret_key"].(string)
+	if !ok {
+		return radosgw.Credentials{}, errors.New("failed to fetch 'secret_key'")
+	}
+
+	accessKey, ok := kvSecret.Data["access_key"].(string)
+	if !ok {
+		return radosgw.Credentials{}, errors.New("failed to fetch 'access_key'")
+	}
+
+	return radosgw.Credentials{
+		AccessKey: accessKey,
+		SecretKey: secretKey,
+	}, err
+
 }

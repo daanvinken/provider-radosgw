@@ -18,6 +18,7 @@ package main
 
 import (
 	"context"
+	"github.com/daanvinken/provider-radosgw/internal/features"
 	"k8s.io/klog/v2"
 	"os"
 	"path/filepath"
@@ -40,7 +41,6 @@ import (
 	"github.com/daanvinken/provider-radosgw/apis"
 	"github.com/daanvinken/provider-radosgw/apis/v1alpha1"
 	radosgw "github.com/daanvinken/provider-radosgw/internal/controller"
-	"github.com/daanvinken/provider-radosgw/internal/features"
 )
 
 func main() {
