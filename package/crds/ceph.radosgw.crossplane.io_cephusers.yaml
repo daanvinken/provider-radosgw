@@ -25,6 +25,9 @@ spec:
     - jsonPath: .metadata.annotations.crossplane\.io/external-name
       name: EXTERNAL-NAME
       type: string
+    - jsonPath: .spec.providerConfigRef.name
+      name: CLUSTERNAME
+      type: string
     - jsonPath: .metadata.creationTimestamp
       name: AGE
       type: date

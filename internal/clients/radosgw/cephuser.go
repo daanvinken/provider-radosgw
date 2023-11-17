@@ -19,7 +19,6 @@ func NewRadosgwClient(host string, creds Credentials) *radosgw_admin.API {
 	httpClient := &http.Client{}
 	rgwClient, err := radosgw_admin.New(host, creds.AccessKey, creds.SecretKey, httpClient)
 	if err != nil {
-		//TODO this seems bad, but same pattern found in gitlab provider
 		panic(err)
 	}
 	return rgwClient
@@ -67,6 +66,5 @@ func isNotFound(err error) bool {
 	if strings.HasPrefix(err.Error(), "NoSuchUser") {
 		return true
 	}
-
 	return false
 }

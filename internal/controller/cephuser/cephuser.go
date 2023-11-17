@@ -139,18 +139,18 @@ func (c *connector) Connect(ctx context.Context, mg resource.Managed) (managed.E
 
 	return &external{
 		rgwClient:   c.newRadosgwClientFn(pc.Spec.HostName, radosgwCredentials),
+		vaultClient: c.newVaultClientFn(pc.Spec.CredentialsVault),
 		kubeClient:  c.kube,
 		log:         c.log,
-		vaultClient: c.newVaultClientFn(pc.Spec.CredentialsVault),
 	}, err
 }
 
 // An ExternalClient observes, then either creates, updates, or deletes an
 // external resource to ensure it reflects the managed resource's desired state.
 type external struct {
-	kubeClient  client.Client
 	rgwClient   *radosgw_admin.API
 	vaultClient *vault_sdk.Client
+	kubeClient  client.Client
 	log         logging.Logger
 }
 
@@ -218,7 +218,6 @@ func (c *external) Create(ctx context.Context, mg resource.Managed) (managed.Ext
 	}
 
 	quota := radosgw.GenerateCephUserQuotaInput(cr)
-
 	err = c.rgwClient.SetUserQuota(ctx, *quota)
 	if err != nil {
 		return managed.ExternalCreation{}, errors.Wrap(err, "failed to set userquota during creation")
@@ -244,11 +243,6 @@ func (c *external) Create(ctx context.Context, mg resource.Managed) (managed.Ext
 	err = vault.WriteSecretsToVault(c.vaultClient, pc.Spec.CredentialsVault, &secretPath, &credentialsData)
 	if err != nil {
 		//TODO remove user from radosgw again to fix state. Actually use defer with context.
-		return managed.ExternalCreation{}, err
-	}
-
-	err = c.kubeClient.Update(ctx, cr)
-	if err != nil {
 		return managed.ExternalCreation{}, err
 	}
 
